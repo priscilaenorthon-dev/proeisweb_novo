@@ -108,6 +108,7 @@ class ProeisApp:
         self._countdown_active = False
         self._operation_started_at: float | None = None
         self._operation_status_prefix = ""
+        self._state_lock = threading.Lock()
 
         self.convenios, self.cpas = load_options()
         settings = DEFAULTS | load_json(SETTINGS_PATH, {})
@@ -416,21 +417,28 @@ class ProeisApp:
     _PRE_LOGIN_SECS = 90
 
     def _tick_countdown(self, target: datetime):
-        if not self._countdown_active:
-            return
+        with self._state_lock:
+            if not self._countdown_active:
+                return
 
         total_sec = int((target - datetime.now()).total_seconds())
 
         if total_sec <= 0:
-            # Caso raro: processo ja devia ter iniciado no bloco abaixo
-            self._countdown_active = False
+            # Caso raro: evita disparos duplicados quando o timer atrasar.
+            with self._state_lock:
+                if not self._countdown_active:
+                    return
+                self._countdown_active = False
             self.start_process(dry_run=False, scheduled=True)
             return
 
         if total_sec <= self._PRE_LOGIN_SECS:
             # Dispara o processo agora com --wait-until para que o login
             # seja feito imediatamente enquanto aguarda o horario exato
-            self._countdown_active = False
+            with self._state_lock:
+                if not self._countdown_active:
+                    return
+                self._countdown_active = False
             self.status.set(f"Fazendo login antecipado... marcacao em {total_sec}s")
             self.write_log(
                 f"Login antecipado iniciado ({total_sec}s antes do horario).\n"
@@ -525,7 +533,12 @@ class ProeisApp:
         log_dir.mkdir(exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_path = log_dir / f"{ts}_gui.log"
-        self._log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        try:
+            self._log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        except OSError as exc:
+            self._log_file = None
+            messagebox.showerror("Erro de log", f"Nao foi possivel criar o arquivo de log:\n{exc}")
+            return
 
         self.clear_log()
         self.clear_vagas()
@@ -556,11 +569,20 @@ class ProeisApp:
 
         self._operation_status_prefix = "Listando vagas" if list_all_dates else ("Testando" if dry_run else "Executando marcacao")
         self.status.set(f"{self._operation_status_prefix}... tempo: 0.0s")
-        self.process = subprocess.Popen(
-            args, cwd=ROOT,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, env=env,
-        )
+        try:
+            self.process = subprocess.Popen(
+                args, cwd=ROOT,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+            )
+        except OSError as exc:
+            if self._log_file:
+                self._log_file.write(f"[Erro ao iniciar subprocesso: {exc}]\n")
+                self._log_file.close()
+                self._log_file = None
+            self.status.set("Falha ao iniciar")
+            messagebox.showerror("Falha ao iniciar", f"Nao foi possivel iniciar a automacao:\n{exc}")
+            return
         self._tick_operation_timer()
         threading.Thread(target=self._read_output, daemon=True).start()
 
@@ -594,10 +616,13 @@ class ProeisApp:
             self.root.after(1000, self._tick_operation_timer)
 
     def _add_vaga_row(self, label: str):
-        data_evento, nome, hora, turno, endereco, tipo, acao = parse_vaga_output(label)
-        tag = "reserva" if "reserva" in tipo.lower() else "normal"
-        self.tree.insert("", "end", values=(data_evento, nome, hora, turno, endereco, tipo, acao), tags=(tag,))
-        self.notebook.select(0)
+        try:
+            data_evento, nome, hora, turno, endereco, tipo, acao = parse_vaga_output(label)
+            tag = "reserva" if "reserva" in tipo.lower() else "normal"
+            self.tree.insert("", "end", values=(data_evento, nome, hora, turno, endereco, tipo, acao), tags=(tag,))
+            self.notebook.select(0)
+        except Exception as exc:
+            self.write_log(f"[WARN] Falha ao adicionar vaga na tabela: {exc}\n")
 
     def _finish(self, code: int):
         elapsed = None
@@ -630,14 +655,29 @@ class ProeisApp:
             self._log_file = None
 
     def cancel(self):
-        if self._countdown_active:
-            self._countdown_active = False
-            self.status.set("Agendamento cancelado")
-            self.write_log("Agendamento cancelado pelo usuario.\n")
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
+        with self._state_lock:
+            if self._countdown_active:
+                self._countdown_active = False
+                self.status.set("Agendamento cancelado")
+                self.write_log("Agendamento cancelado pelo usuario.\n")
+
+        proc = self.process
+        if proc and proc.poll() is None:
+            proc.terminate()
             self.write_log("Processo cancelado.\n")
             self.status.set("Cancelado")
+
+            def _ensure_stopped() -> None:
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=2)
+                    except Exception:
+                        return
+
+            threading.Thread(target=_ensure_stopped, daemon=True).start()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

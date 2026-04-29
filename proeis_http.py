@@ -5,8 +5,10 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -35,6 +37,7 @@ except AttributeError:
     pass
 
 LOG_DIR = Path("logs")
+_LOG_FILE_HANDLE = None
 
 
 # ── Logger ────────────────────────────────────────────────────────────────────
@@ -75,13 +78,31 @@ class _Tee:
 
 
 def _setup_log() -> Path:
+    global _LOG_FILE_HANDLE
     LOG_DIR.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = LOG_DIR / f"{ts}_http.log"
     log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+    _LOG_FILE_HANDLE = log_file
     sys.stdout = _Tee(sys.__stdout__, log_file)
     sys.stderr = _Tee(sys.__stderr__, log_file)
     return log_path
+
+
+def _close_log_file() -> None:
+    global _LOG_FILE_HANDLE
+    if _LOG_FILE_HANDLE is None:
+        return
+    try:
+        _LOG_FILE_HANDLE.flush()
+        _LOG_FILE_HANDLE.close()
+    except Exception:
+        pass
+    finally:
+        _LOG_FILE_HANDLE = None
+
+
+atexit.register(_close_log_file)
 
 
 # ── URLs ──────────────────────────────────────────────────────────────────────
@@ -110,6 +131,13 @@ class Candidate:
     action: str
     payload: dict[str, str]
     score: int
+
+
+@dataclass
+class CaptchaSubmission:
+    text: str
+    captcha_id: str | None
+    solver_index: int
 
 
 def norm(value: str | None) -> str:
@@ -422,13 +450,75 @@ class ProeisHTTP:
         """Envia imagem ao 2captcha e retorna o texto resolvido."""
         t0 = time.monotonic()
         try:
-            if _TWOCAPTCHA_SDK:
-                return self._solve_via_sdk(image)
-            return self._solve_via_http(image)
+            parallel_solves = max(1, int(os.getenv("TWOCAPTCHA_PARALLEL_SOLVES", "2")))
+            if parallel_solves == 1:
+                return self._solve_single_captcha_submission(image, 1)
+            return self._solve_parallel_captcha_submissions(image, parallel_solves)
         finally:
             self.captcha_elapsed_seconds += time.monotonic() - t0
 
+    def _solve_single_captcha_submission(self, image: bytes, solver_index: int) -> str:
+        result = self._solve_single_captcha_submission_result(image, solver_index)
+        self.last_captcha_id = result.captcha_id
+        return result.text
+
+    def _solve_single_captcha_submission_result(
+        self,
+        image: bytes,
+        solver_index: int,
+        stop_event: threading.Event | None = None,
+    ) -> CaptchaSubmission:
+        _log("CAPTCHA", f"Resolucao {solver_index}: enviando captcha.")
+        if _TWOCAPTCHA_SDK:
+            return self._solve_via_sdk_result(image, solver_index)
+        return self._solve_via_http_result(image, solver_index, stop_event)
+
+    def _solve_parallel_captcha_submissions(self, image: bytes, parallel_solves: int) -> str:
+        _log("CAPTCHA", f"Captcha paralelo ativado: {parallel_solves} envio(s) simultaneo(s).")
+        errors: list[str] = []
+        stop_event = threading.Event()
+        executor = ThreadPoolExecutor(max_workers=parallel_solves)
+        futures = [
+            executor.submit(self._solve_single_captcha_submission_result, image, solver_index, stop_event)
+            for solver_index in range(1, parallel_solves + 1)
+        ]
+        try:
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                except CaptchaInvalidAnswerError as exc:
+                    errors.append(str(exc))
+                    _log("CAPTCHA", f"Resposta paralela invalida: {exc}")
+                    continue
+                except AutomationError as exc:
+                    errors.append(str(exc))
+                    _log("CAPTCHA", f"Resolucao paralela falhou: {exc}")
+                    continue
+
+                text = normalize_captcha_answer(result.text)
+                if is_valid_captcha_answer(text):
+                    self.last_captcha_id = result.captcha_id
+                    stop_event.set()
+                    _log(
+                        "CAPTCHA",
+                        f"Captcha paralelo vencedor: envio {result.solver_index}, id={result.captcha_id}, resposta={text}",
+                    )
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return text
+
+                errors.append(f"envio {result.solver_index}: resposta invalida {result.text!r}")
+                _log("CAPTCHA", f"Envio {result.solver_index} retornou formato invalido: {result.text!r}")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        raise CaptchaInvalidAnswerError("", "; ".join(errors) or "sem resposta valida")
+
     def _solve_via_sdk(self, image: bytes) -> str:
+        result = self._solve_via_sdk_result(image, 1)
+        self.last_captcha_id = result.captcha_id
+        return result.text
+
+    def _solve_via_sdk_result(self, image: bytes, solver_index: int) -> CaptchaSubmission:
         """Resolve captcha usando o SDK oficial 2captcha-python (v2.x)."""
         max_wait = int(os.getenv("TWOCAPTCHA_MAX_WAIT", "75"))
         poll_interval = float(os.getenv("TWOCAPTCHA_POLL_INTERVAL", "1.5"))
@@ -455,20 +545,30 @@ class ProeisHTTP:
 
         elapsed = int((time.monotonic() - t0) * 1000)
         captcha_id = result.get("captchaId") or result.get("id") or ""
-        self.last_captcha_id = str(captcha_id) if captcha_id else None
+        captcha_id = str(captcha_id) if captcha_id else None
         # No SDK v2, result['code'] é a string bruta retornada pela API
         raw_code = str(result.get("code", ""))
         text = normalize_captcha_answer(raw_code)
-        _log("CAPTCHA", f"[SDK] Resposta em {elapsed}ms: '{raw_code}' -> normalizado: '{text}' (captchaId={self.last_captcha_id})")
+        _log("CAPTCHA", f"[SDK] Resposta em {elapsed}ms: '{raw_code}' -> normalizado: '{text}' (captchaId={captcha_id})")
 
         if not is_valid_captcha_answer(text):
-            self.report_bad_captcha()
+            self.report_bad_captcha_id(captcha_id)
             raise CaptchaInvalidAnswerError(text, raw_code)
 
         _log("CAPTCHA", f"[SDK] Captcha resolvido com sucesso: {text}")
-        return text
+        return CaptchaSubmission(text=text, captcha_id=captcha_id, solver_index=solver_index)
 
     def _solve_via_http(self, image: bytes) -> str:
+        result = self._solve_via_http_result(image, 1)
+        self.last_captcha_id = result.captcha_id
+        return result.text
+
+    def _solve_via_http_result(
+        self,
+        image: bytes,
+        solver_index: int,
+        stop_event: threading.Event | None = None,
+    ) -> CaptchaSubmission:
         """Resolve captcha via HTTP direto (fallback sem SDK)."""
         _log("CAPTCHA", "[HTTP] Enviando captcha para 2captcha via HTTP direto (SDK nao instalada)...")
         submit_timeout = int(os.getenv("TWOCAPTCHA_SUBMIT_TIMEOUT", "45"))
@@ -492,7 +592,6 @@ class ProeisHTTP:
         if data.get("status") != 1:
             raise AutomationError(f"2captcha recusou envio: {data}")
         captcha_id = data["request"]
-        self.last_captcha_id = captcha_id
         _log("CAPTCHA", f"[HTTP] Captcha enviado. captchaId={captcha_id}")
 
         initial_wait = float(os.getenv("TWOCAPTCHA_INITIAL_WAIT", "5"))
@@ -500,42 +599,61 @@ class ProeisHTTP:
         max_wait = float(os.getenv("TWOCAPTCHA_MAX_WAIT", "75"))
         deadline = time.monotonic() + max_wait
         _log("CAPTCHA", f"[HTTP] Aguardando resultado (inicial={initial_wait}s, polling={poll_interval}s, max={max_wait}s)...")
-        time.sleep(initial_wait)
+        self._sleep_or_cancel_parallel_captcha(initial_wait, stop_event)
         poll_count = 0
         while time.monotonic() < deadline:
+            if stop_event and stop_event.is_set():
+                raise AutomationError("resolucao paralela cancelada apos vencedor")
             poll_count += 1
             result = requests.get(
                 "https://2captcha.com/res.php",
                 params={"key": self.captcha_key, "action": "get", "id": captcha_id, "json": 1},
                 timeout=result_timeout,
             )
+            if result.status_code >= 500:
+                _log("CAPTCHA", f"[HTTP] Poll {poll_count}: erro {result.status_code} no servidor 2captcha, tentando novamente...")
+                self._sleep_or_cancel_parallel_captcha(poll_interval, stop_event)
+                continue
             result.raise_for_status()
             solved = result.json()
             if solved.get("status") == 1:
                 text = normalize_captcha_answer(solved["request"])
                 _log("CAPTCHA", f"[HTTP] Resolvido apos {poll_count} poll(s): '{solved['request']}' -> '{text}'")
                 if not is_valid_captcha_answer(text):
-                    self.report_bad_captcha()
+                    self.report_bad_captcha_id(captcha_id)
                     raise CaptchaInvalidAnswerError(text, str(solved.get("request", "")))
                 _log("CAPTCHA", f"[HTTP] Captcha valido: {text}")
-                return text
+                return CaptchaSubmission(text=text, captcha_id=captcha_id, solver_index=solver_index)
             if solved.get("request") != "CAPCHA_NOT_READY":
                 raise AutomationError(f"2captcha retornou erro: {solved}")
             _log("CAPTCHA", f"[HTTP] Poll {poll_count}: ainda processando... (restam {int(deadline - time.monotonic())}s)")
-            time.sleep(poll_interval)
+            self._sleep_or_cancel_parallel_captcha(poll_interval, stop_event)
         raise AutomationError("2captcha nao respondeu em tempo util.")
+
+    def _sleep_or_cancel_parallel_captcha(self, seconds: float, stop_event: threading.Event | None = None) -> None:
+        if not stop_event:
+            time.sleep(seconds)
+            return
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if stop_event.is_set():
+                raise AutomationError("resolucao paralela cancelada apos vencedor")
+            time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
 
     def normalize_captcha_answer(self, value: str) -> str:
         return normalize_captcha_answer(value)
 
     def report_bad_captcha(self) -> None:
-        if not self.last_captcha_id:
+        self.report_bad_captcha_id(self.last_captcha_id)
+
+    def report_bad_captcha_id(self, captcha_id: str | None) -> None:
+        if not captcha_id:
             return
-        _log("CAPTCHA", f"Reportando captcha incorreto ao 2captcha (id={self.last_captcha_id})...")
+        _log("CAPTCHA", f"Reportando captcha incorreto ao 2captcha (id={captcha_id})...")
         try:
             requests.get(
                 "https://2captcha.com/res.php",
-                params={"key": self.captcha_key, "action": "reportbad", "id": self.last_captcha_id, "json": 1},
+                params={"key": self.captcha_key, "action": "reportbad", "id": captcha_id, "json": 1},
                 timeout=15,
             )
             _log("CAPTCHA", "Captcha incorreto reportado com sucesso.")
@@ -1113,6 +1231,76 @@ class ProeisHTTP:
             soup = self.request("GET", chosen.action)
         self.confirm_if_needed(soup)
 
+    def simulate_target_events(
+        self,
+        prefer: str,
+        quantidade: int,
+        data_evento: str = "",
+        nome_evento: str = "",
+        hora_evento: str = "",
+        turno: str = "",
+        endereco: str = "",
+    ) -> list[Candidate]:
+        soup = self.require_soup()
+        candidates = self.available_candidates(soup, prefer)
+        filtered = [
+            candidate for candidate in candidates
+            if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
+        ]
+        selected = filtered[: max(1, quantidade)]
+        if not selected:
+            _log("VAGA", f"Simulacao: nenhum candidato passou pelos filtros para prefer='{prefer}'.")
+            raise AutomationError("Simulacao nao encontrou vaga compativel.")
+        _log("VAGA", f"Simulacao: {len(selected)}/{quantidade} vaga(s) seriam clicadas.")
+        print(f"[SIMULATE] Marcacoes simuladas: {len(selected)}/{quantidade}")
+        for candidate in selected:
+            emit_vaga(candidate.label, data_evento=data_evento, acao="Simulacao Eu vou")
+        return selected
+
+    def simulate_mark_scanning_dates(
+        self,
+        convenio: str,
+        cpa: str,
+        prefer: str,
+        quantidade: int,
+        scan_rounds: int = 1,
+        start_date: str = "",
+        nome_evento: str = "",
+        hora_evento: str = "",
+        turno: str = "",
+        endereco: str = "",
+    ) -> int:
+        _log("VAGA", f"=== Simulacao por varredura: quantidade={quantidade}, prefer='{prefer}', data_inicial='{start_date}' ===")
+        self.navigate_to_service_page()
+        dates = self.dates_for_convenio(convenio)
+        simulated = 0
+        start_index = first_scan_date_index(dates, start_date)
+        if start_index >= len(dates):
+            raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
+
+        for scan_round in range(1, coerce_scan_rounds(scan_rounds) + 1):
+            date_index = start_index if scan_round == 1 else 0
+            while date_index < len(dates) and simulated < quantidade:
+                _, label = dates[date_index]
+                self.navigate_to_service_page()
+                self.fill_filters(convenio, label, cpa)
+                remaining = quantidade - simulated
+                try:
+                    selected = self.simulate_target_events(
+                        prefer, 1, data_evento=label,
+                        nome_evento=nome_evento,
+                        hora_evento=hora_evento,
+                        turno=turno,
+                        endereco=endereco,
+                    )
+                    simulated += min(len(selected), remaining)
+                except AutomationError:
+                    _log("VAGA", f"Simulacao: nenhuma vaga do tipo '{prefer}' em '{label}'.")
+                date_index = next_scan_date_index(date_index, found_candidate=True)
+
+        print(f"[SIMULATE] Total simulado: {simulated}/{quantidade}")
+        return simulated
+
     def choose_target_event(
         self,
         prefer: str,
@@ -1345,6 +1533,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--turno", default="")
     parser.add_argument("--endereco", default="")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--simulate-mark", action="store_true", help="Segue a logica de marcacao, mas apenas lista as vagas que seriam clicadas.")
     parser.add_argument("--list-all-dates", action="store_true", help="Lista vagas de todas as datas disponiveis para o convenio/CPA, sem clicar em Eu Vou.")
     parser.add_argument("--no-debug", action="store_true")
     parser.add_argument("--scan-rounds", type=int, default=1, help="Quantidade de rodadas de varredura quando a data do evento estiver vazia.")
@@ -1409,6 +1598,20 @@ def main() -> int:
         _log("INFO", "Horario atingido — iniciando marcacao.")
 
     _log("INFO", "=== FASE 2: Marcacao ===")
+
+    if args.simulate_mark:
+        simulated = client.simulate_mark_scanning_dates(
+            args.convenio, args.cpa, args.disponivel, args.quantidade,
+            scan_rounds=args.scan_rounds,
+            start_date=args.data_evento,
+            nome_evento=args.nome_evento,
+            hora_evento=args.hora_evento,
+            turno=args.turno,
+            endereco=args.endereco,
+        )
+        if simulated < args.quantidade:
+            _log("INFO", f"Simulacao encontrou apenas {simulated}/{args.quantidade} marcacao(oes).")
+        return 0
 
     if not args.data_evento and not args.dry_run:
         confirmed = client.mark_scanning_dates(
