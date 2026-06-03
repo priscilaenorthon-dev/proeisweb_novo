@@ -771,10 +771,12 @@ async function startListVagas() {
         if (msg.line.startsWith('[VAGA]')) {
           try {
             const vaga = JSON.parse(msg.line.slice(6).trim());
-            // Extrai hora do label (ex: "14h30", "22:00")
             const horaM = (vaga.label || '').match(/\b(\d{1,2})[hH:](\d{2})\b/);
             const hora = horaM ? `${horaM[1]}h${horaM[2]}` : '';
-            const { nome: nomeEvento, endereco: endEvento } = parseVagaLabel(vaga.label || '');
+            // Usa campos pré-parseados do backend; fallback para JS se ausentes
+            const parsed = parseVagaLabel(vaga.label || '');
+            const nomeEvento = vaga.nome || parsed.nome;
+            const endEvento  = vaga.endereco || parsed.endereco;
             totalVagas++;
             if (vagasBody) {
               const vagaIdx = _vagasStore.length;
@@ -804,6 +806,7 @@ async function startListVagas() {
       } else if (msg.type === 'done') {
         if (msg.status === 'erro') appendListLog(`[ERRO] ${msg.message}`, 'text-red-400');
         else appendListLog(`✓ Total: ${msg.total || totalVagas} vaga(s) encontrada(s)`, 'text-green-400');
+        if (msg.op_id) appendListLog(`[LOG] ID da operação: ${msg.op_id} — /api/logs/${msg.op_id}`, 'text-gray-500');
       }
     }
   } catch (err) {
@@ -999,6 +1002,7 @@ async function startRun() {
         } else if (msg.type === 'done') {
           finalStatus = msg.status;
           finalMsg = msg.message || '';
+          if (msg.op_id) appendLog(`[LOG] ID da operação: ${msg.op_id} — /api/logs/${msg.op_id}`, 'text-gray-500');
         }
       }
     } catch (err) {

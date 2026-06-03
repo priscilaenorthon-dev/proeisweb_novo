@@ -7,6 +7,7 @@ import re
 import secrets
 import sys
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -192,13 +193,15 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 
 
 _env_lock = threading.Lock()
+_LOGS_DIR = ROOT / "logs"
 
 
 class _Capture:
-    """Redireciona stdout/stderr para a fila SSE de um endpoint de streaming."""
+    """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operação."""
 
-    def __init__(self, emit_fn) -> None:
+    def __init__(self, emit_fn, log_file=None) -> None:
         self._emit = emit_fn
+        self._log_file = log_file
 
     def write(self, data: str) -> None:
         try:
@@ -210,6 +213,12 @@ class _Capture:
             for line in data.splitlines():
                 if line.strip():
                     self._emit({"type": "log", "line": line})
+                    if self._log_file:
+                        try:
+                            self._log_file.write(line + "\n")
+                            self._log_file.flush()
+                        except Exception:
+                            pass
 
     def flush(self) -> None:
         try:
@@ -523,7 +532,9 @@ async def run_automation(body: RunRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
-    result: dict[str, Any] = {"status": "pendente", "message": ""}
+    op_id = uuid.uuid4().hex[:8]
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result: dict[str, Any] = {"status": "pendente", "message": "", "op_id": op_id}
     loop = asyncio.get_event_loop()
     aqueue: asyncio.Queue = asyncio.Queue()
 
@@ -533,9 +544,14 @@ async def run_automation(body: RunRequest):
     def _run() -> None:
         old_out = sys.stdout
         old_err = sys.stderr
-        sys.stdout = _Capture(emit)
-        sys.stderr = _Capture(emit)
+        _LOGS_DIR.mkdir(exist_ok=True)
+        log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run.log"
+        log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        cap = _Capture(emit, log_file)
+        sys.stdout = cap
+        sys.stderr = cap
         try:
+            print(f"[OP] Operação iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
             if not login_val:
                 raise AutomationError("Login não configurado. Vá em Configurações.")
             if not password_val:
@@ -580,29 +596,34 @@ async def run_automation(body: RunRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
+            print(f"[OP] Operação encerrada: status={result['status']} | log={log_path.name}")
             sys.stdout = old_out
             sys.stderr = old_err
-            emit(None)  # sentinel: sinaliza fim da execução
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            emit(None)
 
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
+        elapsed_idle = 0
         try:
             while True:
                 try:
-                    item = await asyncio.wait_for(aqueue.get(), timeout=55.0)
+                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
+                    elapsed_idle = 0
                     if item is None:
                         break
                     yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
-                    aviso = (
-                        "[AVISO] Operação excedeu 55s. "
-                        "Verifique sua conexão ou use timeouts menores nas Configurações."
-                    )
-                    yield (
-                        f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
-                    )
-                    break
+                    elapsed_idle += 3
+                    if elapsed_idle >= 120:
+                        aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
+                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
+                        break
+                    yield ": keep-alive\n\n"
         finally:
             yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
 
@@ -626,7 +647,9 @@ async def list_vagas(body: ListVagasRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
-    result: dict[str, Any] = {"status": "ok", "total": 0}
+    op_id = uuid.uuid4().hex[:8]
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result: dict[str, Any] = {"status": "ok", "total": 0, "op_id": op_id}
     loop = asyncio.get_event_loop()
     aqueue: asyncio.Queue = asyncio.Queue()
 
@@ -636,9 +659,14 @@ async def list_vagas(body: ListVagasRequest):
     def _run() -> None:
         old_out = sys.stdout
         old_err = sys.stderr
-        sys.stdout = _Capture(emit)
-        sys.stderr = _Capture(emit)
+        _LOGS_DIR.mkdir(exist_ok=True)
+        log_path = _LOGS_DIR / f"{ts_str}_{op_id}_listar.log"
+        log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        cap = _Capture(emit, log_file)
+        sys.stdout = cap
+        sys.stderr = cap
         try:
+            print(f"[OP] Listagem iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_especifica or 'todas'}")
             if not login_val:
                 raise AutomationError("Login não configurado. Vá em Configurações.")
             if not password_val:
@@ -663,21 +691,17 @@ async def list_vagas(body: ListVagasRequest):
             client.navigate_to_service_page()
 
             if body.data_especifica:
-                # Data específica: usa fill_filters e separa candidatos por tipo
-                # para que o frontend detecte corretamente Titular/Reserva
                 from proeis_http import emit_vaga, normalize_date_for_site, norm  # noqa: E402
                 data_norm = normalize_date_for_site(body.data_especifica)
                 client.fill_filters(body.convenio, data_norm, body.cpa, prefer="qualquer")
                 soup = client.require_soup()
                 candidates = client.available_candidates(soup, "qualquer")
 
-                # Separa por tipo usando matches_preference (mesma lógica do proeis_http)
                 reserva = [c for c in candidates if client.matches_preference(norm(c.label), "reserva")]
                 titular = [c for c in candidates if not client.matches_preference(norm(c.label), "reserva")]
 
                 for tipo_nome, grupo in [("nao-reserva", titular), ("reserva", reserva)]:
                     if grupo:
-                        # Emite cabeçalho que o frontend lê para detectar o tipo
                         print(f"[VAGAS] {len(grupo)} vaga(s) encontrada(s) em {data_norm} ({tipo_nome}):")
                         for cand in grupo:
                             emit_vaga(cand.label, data_evento=data_norm, acao="Visualizacao")
@@ -695,25 +719,34 @@ async def list_vagas(body: ListVagasRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
+            print(f"[OP] Listagem encerrada: status={result['status']} | log={log_path.name}")
             sys.stdout = old_out
             sys.stderr = old_err
+            try:
+                log_file.close()
+            except Exception:
+                pass
             emit(None)
 
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
+        elapsed_idle = 0
         try:
             while True:
                 try:
-                    item = await asyncio.wait_for(aqueue.get(), timeout=55.0)
+                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
+                    elapsed_idle = 0
                     if item is None:
                         break
                     yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
-                    yield (
-                        f"data: {json.dumps({'type': 'log', 'line': '[AVISO] Operação excedeu 55s.'})}\n\n"
-                    )
-                    break
+                    elapsed_idle += 3
+                    if elapsed_idle >= 120:
+                        aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
+                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
+                        break
+                    yield ": keep-alive\n\n"
         finally:
             yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
 
@@ -726,6 +759,39 @@ async def list_vagas(body: ListVagasRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/api/logs")
+def list_logs():
+    """Lista as 20 operações mais recentes (arquivos de log)."""
+    if not _LOGS_DIR.exists():
+        return {"logs": []}
+    files = sorted(_LOGS_DIR.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)[:20]
+    return {
+        "logs": [
+            {
+                "name": f.name,
+                "op_id": f.stem.split("_")[2] if len(f.stem.split("_")) >= 3 else f.stem,
+                "size_kb": round(f.stat().st_size / 1024, 1),
+                "created_at": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+            }
+            for f in files
+        ]
+    }
+
+
+@app.get("/api/logs/{op_id}")
+def get_log(op_id: str):
+    """Retorna o conteúdo do arquivo de log de uma operação."""
+    if not re.match(r"^[a-f0-9]{8}$", op_id):
+        raise HTTPException(status_code=400, detail="op_id inválido.")
+    if not _LOGS_DIR.exists():
+        raise HTTPException(status_code=404, detail="Pasta de logs não encontrada.")
+    matches = list(_LOGS_DIR.glob(f"*_{op_id}_*.log"))
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"Log '{op_id}' não encontrado.")
+    log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
+    return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
 
 
 # Serve arquivos estáticos em desenvolvimento local (Vercel gerencia isso em produção)
