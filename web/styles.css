@@ -3,6 +3,11 @@
 
 html, body { height: 100%; }
 
+body {
+  min-width: 320px;
+  -webkit-text-size-adjust: 100%;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #111; }
 ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
@@ -138,9 +143,13 @@ html, body { height: 100%; }
   line-height: 1.6;
   color: #d1d5db;
   min-height: 200px;
+  overflow-wrap: anywhere;
 }
 
-.log-line { word-break: break-all; }
+.log-line {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
 
 /* ── Result badges ───────────────────────────────────────── */
 .result-badge {
@@ -203,6 +212,7 @@ html, body { height: 100%; }
 .vagas-table {
   border-collapse: collapse;
   font-size: 0.8rem;
+  min-width: 760px;
 }
 .vagas-table thead tr {
   background: #1f2937;
@@ -284,4 +294,226 @@ input[type="checkbox"] {
   width: 15px;
   height: 15px;
   cursor: pointer;
+}
+
+/* Mobile and tablet layout */
+@media (max-width: 1024px) {
+  .app-shell {
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 34vh;
+    border-right: 0;
+    border-bottom: 1px solid #1f2937;
+  }
+
+  #sidebar > div:first-child {
+    padding: 12px 16px;
+  }
+
+  #sidebar nav {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  #sidebar nav .nav-item {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 9px 12px;
+    white-space: nowrap;
+  }
+
+  #sidebar > div:last-child {
+    padding: 8px 16px;
+  }
+
+  #main-content {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #content {
+    min-height: 100%;
+  }
+
+  #content > .p-6,
+  #modal-box .p-6 {
+    padding: 18px;
+  }
+
+  #content .text-2xl {
+    font-size: 1.35rem;
+    line-height: 1.2;
+  }
+
+  #content .flex.gap-5.flex-1 {
+    flex-direction: column;
+  }
+
+  #content .w-72 {
+    width: 100%;
+  }
+
+  #content .card[style*="min-height:360px"] {
+    min-height: 320px !important;
+  }
+
+  #content .card[style*="max-height:260px"] {
+    max-height: none !important;
+  }
+
+  .terminal {
+    min-height: 180px;
+    max-height: 48vh;
+  }
+
+  .result-badge {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .result-badge .ml-auto {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  #sidebar {
+    max-height: 40vh;
+  }
+
+  #sidebar > div:first-child .w-9 {
+    width: 34px;
+    height: 34px;
+  }
+
+  #sidebar nav .nav-item {
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  #sidebar nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  #sidebar nav .nav-item {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+  }
+
+  #content > .p-6,
+  #modal-box .p-6 {
+    padding: 14px;
+  }
+
+  #content .flex.items-center.justify-between {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  #content > .p-6 > .flex.items-center.justify-between,
+  #content .event-card .flex.items-start.justify-between,
+  #content .srv-card .flex.items-start.justify-between {
+    flex-direction: column;
+  }
+
+  #content .event-card .shrink-0,
+  #content .srv-card .shrink-0 {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 42px;
+    padding: 9px 14px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  #content > .p-6 > .flex.items-center.justify-between .btn-primary {
+    width: 100%;
+  }
+
+  #modal-overlay {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  #modal-box {
+    max-height: calc(100dvh - 20px);
+    border-radius: 8px;
+  }
+
+  #modal-box form .flex.justify-end {
+    flex-direction: column-reverse;
+  }
+
+  #modal-box form .flex.justify-end button {
+    width: 100%;
+  }
+
+  .card,
+  .event-card,
+  .srv-card {
+    padding: 14px;
+    border-radius: 8px;
+  }
+
+  .empty-state {
+    padding: 44px 12px;
+  }
+
+  .vagas-table {
+    min-width: 680px;
+    font-size: 0.75rem;
+  }
+
+  .vagas-table th,
+  .vagas-table td {
+    padding: 8px 10px;
+  }
+
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    text-align: center;
+  }
+}
+
+@media (max-width: 420px) {
+  #sidebar nav .nav-item span:last-child {
+    max-width: 108px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .form-label {
+    font-size: 0.7rem;
+  }
+
+  .terminal {
+    font-size: 0.7rem;
+  }
+
+  .vagas-table {
+    min-width: 620px;
+  }
 }

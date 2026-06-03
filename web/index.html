@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>PROEIS Bot</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles.css" />
@@ -18,7 +18,7 @@
     };
   </script>
 </head>
-<body class="bg-gray-950 text-gray-100 min-h-screen flex overflow-hidden">
+<body class="bg-gray-950 text-gray-100 min-h-screen flex overflow-hidden app-shell">
 
   <!-- Sidebar -->
   <aside id="sidebar" class="w-60 shrink-0 bg-gray-900 flex flex-col border-r border-gray-800 h-screen">
@@ -59,7 +59,7 @@
   </aside>
 
   <!-- Conteúdo principal -->
-  <main class="flex-1 overflow-auto h-screen">
+  <main id="main-content" class="flex-1 overflow-auto h-screen">
     <div id="content" class="h-full"></div>
   </main>
 
