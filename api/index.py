@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI
+from fastapi import Header, HTTPException, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -61,6 +61,10 @@ class RunRequest(BaseModel):
     connect_timeout: int = 0
     read_timeout: int = 0
     filter_max_attempts: int = 0
+
+
+class SchedulerRunRequest(BaseModel):
+    events: list[RunRequest] = []
 
 
 class ListVagasRequest(BaseModel):
@@ -119,6 +123,84 @@ def _parse_servicos(raw: str) -> list[dict]:
     return servicos
 
 
+def _apply_runtime_options(body: RunRequest) -> None:
+    if body.http_attempts > 0:
+        os.environ["PROEIS_HTTP_ATTEMPTS"] = str(body.http_attempts)
+    if body.connect_timeout > 0:
+        os.environ["PROEIS_CONNECT_TIMEOUT"] = str(body.connect_timeout)
+    if body.read_timeout > 0:
+        os.environ["PROEIS_READ_TIMEOUT"] = str(body.read_timeout)
+    if body.filter_max_attempts > 0:
+        os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
+    if body.gemini_model:
+        os.environ["GEMINI_MODEL"] = body.gemini_model
+
+
+def _run_event_once(body: RunRequest) -> dict[str, Any]:
+    login_val = body.login or os.getenv("PROEIS_LOGIN", "")
+    password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
+
+    if not login_val:
+        raise AutomationError("Login não configurado.")
+    if not password_val:
+        raise AutomationError("Senha não configurada.")
+    if not gemini_key:
+        raise AutomationError("GEMINI_API_KEY não configurada.")
+    if not body.convenio:
+        raise AutomationError("Convênio não informado.")
+    if not body.cpa:
+        raise AutomationError("CPA não informado.")
+
+    _apply_runtime_options(body)
+
+    client = ProeisHTTP(
+        login=login_val,
+        password=password_val,
+        twocaptcha_key=twocaptcha,
+        gemini_api_key=gemini_key,
+    )
+    login_with_retries(client, "Login via agendamento Cloud Scheduler")
+    confirmed = client.mark_scanning_dates(
+        body.convenio,
+        body.cpa,
+        body.disponivel,
+        body.quantidade,
+        scan_rounds=body.scan_rounds,
+        start_date=body.data_evento,
+        nome_evento=body.nome_evento,
+        hora_evento=body.hora_evento,
+        turno=body.turno,
+        endereco=body.endereco,
+    )
+    return {
+        "status": "confirmado" if confirmed >= body.quantidade else "pendente",
+        "confirmed": confirmed,
+        "convenio": body.convenio,
+        "cpa": body.cpa,
+        "data_evento": body.data_evento,
+        "hora_evento": body.hora_evento,
+    }
+
+
+def _scheduled_events_from_env() -> list[RunRequest]:
+    raw = os.getenv("SCHEDULED_EVENTS_JSON", "").strip()
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AutomationError(f"SCHEDULED_EVENTS_JSON inválido: {exc}") from exc
+    if isinstance(data, dict) and "events" in data:
+        data = data["events"]
+    elif isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        raise AutomationError("SCHEDULED_EVENTS_JSON deve ser um objeto, lista ou {'events': [...]}.")
+    return [RunRequest(**item) for item in data]
+
+
 class TestLoginRequest(BaseModel):
     login: str = ""
     password: str = ""
@@ -128,6 +210,44 @@ class TestLoginRequest(BaseModel):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "1.0"}
+
+
+@app.post("/api/scheduler/run")
+def scheduler_run(
+    body: SchedulerRunRequest | None = None,
+    x_scheduler_secret: str = Header(default=""),
+):
+    load_env_file()
+    expected_secret = os.getenv("SCHEDULER_SECRET", "")
+    if not expected_secret:
+        raise HTTPException(status_code=500, detail="SCHEDULER_SECRET não configurado.")
+    if x_scheduler_secret != expected_secret:
+        raise HTTPException(status_code=401, detail="Scheduler não autorizado.")
+
+    try:
+        events = body.events if body and body.events else _scheduled_events_from_env()
+        if not events:
+            raise AutomationError("Nenhum evento informado para o agendamento.")
+
+        results = []
+        for index, event in enumerate(events, start=1):
+            try:
+                result = _run_event_once(event)
+                results.append({"index": index, **result})
+            except Exception as exc:
+                results.append({
+                    "index": index,
+                    "status": "erro",
+                    "message": f"{type(exc).__name__}: {exc}",
+                    "convenio": event.convenio,
+                    "cpa": event.cpa,
+                    "data_evento": event.data_evento,
+                    "hora_evento": event.hora_evento,
+                })
+        ok = any(item.get("status") == "confirmado" for item in results)
+        return {"ok": ok, "total": len(results), "results": results}
+    except AutomationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/test-login")
