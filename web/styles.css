@@ -8,6 +8,11 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Safe area bottom — garante que o conteúdo nunca fique atrás do indicador home do iPhone */
+#main-content {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #111; }
 ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
@@ -550,6 +555,8 @@ input[type="checkbox"] {
 
   #sidebar > div:first-child {
     padding: 12px 16px;
+    /* Respeita o Dynamic Island / notch no topo do iPhone */
+    padding-top: max(12px, env(safe-area-inset-top));
   }
 
   #sidebar nav {
@@ -660,6 +667,8 @@ input[type="checkbox"] {
   #content > .p-6,
   #modal-box .p-6 {
     padding: 14px;
+    /* Garante que o conteúdo final possa ser rolado acima do indicador home */
+    padding-bottom: max(20px, calc(14px + env(safe-area-inset-bottom)));
   }
 
   #content .flex.items-center.justify-between {
@@ -683,6 +692,8 @@ input[type="checkbox"] {
   .form-select {
     min-height: 44px;
     padding: 10px 12px;
+    /* font-size mínimo 16px evita auto-zoom do iOS ao focar o campo */
+    font-size: 1rem;
   }
 
   .btn-primary,
@@ -701,10 +712,12 @@ input[type="checkbox"] {
   #modal-overlay {
     align-items: stretch;
     padding: 10px;
+    /* Espaço para o indicador home não cobrir o rodapé do modal */
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
 
   #modal-box {
-    max-height: calc(100dvh - 20px);
+    max-height: calc(100dvh - 20px - env(safe-area-inset-bottom));
     border-radius: 8px;
   }
 
@@ -808,6 +821,25 @@ input[type="checkbox"] {
     bottom: calc(12px + env(safe-area-inset-bottom));
     text-align: center;
   }
+
+  /* Botões da página de Configurações — full-width no mobile */
+  #content > .p-6 > .flex.flex-wrap.gap-3 {
+    flex-direction: column;
+  }
+
+  #content > .p-6 > .flex.flex-wrap.gap-3 .btn-primary,
+  #content > .p-6 > .flex.flex-wrap.gap-3 .btn-secondary,
+  #content > .p-6 > .flex.flex-wrap.gap-3 .btn-danger {
+    width: 100%;
+    justify-content: center;
+    display: flex;
+    align-items: center;
+  }
+
+  /* Calendar weekdays — tamanho mínimo legível */
+  .calendar-weekdays {
+    font-size: 0.75rem;
+  }
 }
 
 @media (max-width: 420px) {
@@ -817,12 +849,8 @@ input[type="checkbox"] {
     text-overflow: ellipsis;
   }
 
-  .form-label {
-    font-size: 0.7rem;
-  }
-
   .terminal {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
 
   .vagas-table {
