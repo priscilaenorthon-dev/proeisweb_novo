@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 from datetime import datetime, timezone
@@ -30,9 +31,10 @@ from proeis_http import (  # noqa: E402
 
 app = FastAPI(title="PROEIS Bot API", version="1.0.0")
 
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -189,6 +191,42 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
     }
 
 
+_env_lock = threading.Lock()
+
+
+class _Capture:
+    """Redireciona stdout/stderr para a fila SSE de um endpoint de streaming."""
+
+    def __init__(self, emit_fn) -> None:
+        self._emit = emit_fn
+
+    def write(self, data: str) -> None:
+        try:
+            sys.__stdout__.write(data)
+            sys.__stdout__.flush()
+        except Exception:
+            pass
+        if data.strip():
+            for line in data.splitlines():
+                if line.strip():
+                    self._emit({"type": "log", "line": line})
+
+    def flush(self) -> None:
+        try:
+            sys.__stdout__.flush()
+        except Exception:
+            pass
+
+    def reconfigure(self, **_: Any) -> None:
+        pass
+
+    def fileno(self) -> int:
+        try:
+            return sys.__stdout__.fileno()
+        except Exception:
+            return -1
+
+
 def _scheduled_events_from_env() -> list[RunRequest]:
     raw = os.getenv("SCHEDULED_EVENTS_JSON", "").strip()
     if not raw:
@@ -234,8 +272,8 @@ def _doc_to_event(doc) -> dict[str, Any]:
 
 
 def _stored_events() -> list[dict[str, Any]]:
-    events = [_doc_to_event(doc) for doc in _events_collection().stream()]
-    return sorted(events, key=lambda item: item.get("created_at", ""))
+    query = _events_collection().order_by("created_at")
+    return [_doc_to_event(doc) for doc in query.stream()]
 
 
 def _scheduled_events_from_firestore() -> list[RunRequest]:
@@ -250,7 +288,16 @@ class TestLoginRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "1.0"}
+    load_env_file()
+    checks: dict[str, Any] = {"version": "1.0"}
+    checks["scheduler_secret"] = bool(os.getenv("SCHEDULER_SECRET", ""))
+    try:
+        _events_collection().limit(1).get()
+        checks["firestore"] = "ok"
+    except Exception as exc:
+        checks["firestore"] = f"erro: {exc}"
+    all_ok = checks["firestore"] == "ok"
+    return {"status": "ok" if all_ok else "degraded", **checks}
 
 
 @app.post("/api/scheduler/run")
@@ -262,7 +309,7 @@ def scheduler_run(
     expected_secret = os.getenv("SCHEDULER_SECRET", "")
     if not expected_secret:
         raise HTTPException(status_code=500, detail="SCHEDULER_SECRET não configurado.")
-    if x_scheduler_secret != expected_secret:
+    if not secrets.compare_digest(x_scheduler_secret, expected_secret):
         raise HTTPException(status_code=401, detail="Scheduler não autorizado.")
 
     try:
@@ -483,40 +530,11 @@ async def run_automation(body: RunRequest):
     def emit(msg: Optional[dict]) -> None:
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
-    class _Capture:
-        """Redireciona stdout/stderr para a fila SSE."""
-
-        def write(self, data: str) -> None:
-            try:
-                sys.__stdout__.write(data)
-                sys.__stdout__.flush()
-            except Exception:
-                pass
-            if data.strip():
-                for line in data.splitlines():
-                    if line.strip():
-                        emit({"type": "log", "line": line})
-
-        def flush(self) -> None:
-            try:
-                sys.__stdout__.flush()
-            except Exception:
-                pass
-
-        def reconfigure(self, **_: Any) -> None:
-            pass
-
-        def fileno(self) -> int:
-            try:
-                return sys.__stdout__.fileno()
-            except Exception:
-                return -1
-
     def _run() -> None:
         old_out = sys.stdout
         old_err = sys.stderr
-        sys.stdout = _Capture()
-        sys.stderr = _Capture()
+        sys.stdout = _Capture(emit)
+        sys.stderr = _Capture(emit)
         try:
             if not login_val:
                 raise AutomationError("Login não configurado. Vá em Configurações.")
@@ -529,30 +547,17 @@ async def run_automation(body: RunRequest):
             if not body.cpa:
                 raise AutomationError("CPA não informado.")
 
-            # Aplica configurações avançadas como variáveis de ambiente
-            # (seguro em serverless porque cada invocação é isolada)
-            if body.http_attempts > 0:
-                os.environ["PROEIS_HTTP_ATTEMPTS"] = str(body.http_attempts)
-            if body.connect_timeout > 0:
-                os.environ["PROEIS_CONNECT_TIMEOUT"] = str(body.connect_timeout)
-            if body.read_timeout > 0:
-                os.environ["PROEIS_READ_TIMEOUT"] = str(body.read_timeout)
-            if body.filter_max_attempts > 0:
-                os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
-            if body.gemini_model:
-                os.environ["GEMINI_MODEL"] = body.gemini_model
-
-            client = ProeisHTTP(
-                login=login_val,
-                password=password_val,
-                twocaptcha_key=twocaptcha,
-                gemini_api_key=gemini_key,
-            )
+            with _env_lock:
+                _apply_runtime_options(body)
+                client = ProeisHTTP(
+                    login=login_val,
+                    password=password_val,
+                    twocaptcha_key=twocaptcha,
+                    gemini_api_key=gemini_key,
+                )
 
             login_with_retries(client, "Login via painel web")
 
-            # Usa sempre mark_scanning_dates — é o caminho robusto do CLI.
-            # Quando data_evento está definida, start_date limita o início da varredura.
             confirmed = client.mark_scanning_dates(
                 body.convenio,
                 body.cpa,
@@ -628,38 +633,11 @@ async def list_vagas(body: ListVagasRequest):
     def emit(msg: Optional[dict]) -> None:
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
-    class _Capture:
-        def write(self, data: str) -> None:
-            try:
-                sys.__stdout__.write(data)
-                sys.__stdout__.flush()
-            except Exception:
-                pass
-            if data.strip():
-                for line in data.splitlines():
-                    if line.strip():
-                        emit({"type": "log", "line": line})
-
-        def flush(self) -> None:
-            try:
-                sys.__stdout__.flush()
-            except Exception:
-                pass
-
-        def reconfigure(self, **_: Any) -> None:
-            pass
-
-        def fileno(self) -> int:
-            try:
-                return sys.__stdout__.fileno()
-            except Exception:
-                return -1
-
     def _run() -> None:
         old_out = sys.stdout
         old_err = sys.stderr
-        sys.stdout = _Capture()
-        sys.stderr = _Capture()
+        sys.stdout = _Capture(emit)
+        sys.stderr = _Capture(emit)
         try:
             if not login_val:
                 raise AutomationError("Login não configurado. Vá em Configurações.")
@@ -672,23 +650,14 @@ async def list_vagas(body: ListVagasRequest):
             if not body.cpa:
                 raise AutomationError("CPA não informado.")
 
-            if body.http_attempts > 0:
-                os.environ["PROEIS_HTTP_ATTEMPTS"] = str(body.http_attempts)
-            if body.connect_timeout > 0:
-                os.environ["PROEIS_CONNECT_TIMEOUT"] = str(body.connect_timeout)
-            if body.read_timeout > 0:
-                os.environ["PROEIS_READ_TIMEOUT"] = str(body.read_timeout)
-            if body.filter_max_attempts > 0:
-                os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
-            if body.gemini_model:
-                os.environ["GEMINI_MODEL"] = body.gemini_model
-
-            client = ProeisHTTP(
-                login=login_val,
-                password=password_val,
-                twocaptcha_key=twocaptcha,
-                gemini_api_key=gemini_key,
-            )
+            with _env_lock:
+                _apply_runtime_options(body)
+                client = ProeisHTTP(
+                    login=login_val,
+                    password=password_val,
+                    twocaptcha_key=twocaptcha,
+                    gemini_api_key=gemini_key,
+                )
 
             login_with_retries(client, "Login via painel web (listagem)")
             client.navigate_to_service_page()

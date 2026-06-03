@@ -29,17 +29,12 @@ const storage = {
   saveSettings(s) { localStorage.setItem('proeis_settings', JSON.stringify(s)); },
 };
 
-function localEventsFallback() {
-  try { return JSON.parse(localStorage.getItem('proeis_events') || '[]'); }
-  catch { return []; }
-}
-
 async function loadEvents(force = false) {
   if (state.events && !force) return state.events;
   try {
     const data = await api.get('/api/events');
     let events = data.events || [];
-    const local = localEventsFallback();
+    const local = storage.getEvents();
     if (events.length === 0 && local.length > 0 && localStorage.getItem('proeis_events_migrated') !== '1') {
       for (const ev of local) {
         await api.send('/api/events', 'POST', ev);
@@ -51,7 +46,7 @@ async function loadEvents(force = false) {
     state.events = events;
     return events;
   } catch {
-    state.events = localEventsFallback();
+    state.events = storage.getEvents();
     return state.events;
   }
 }
@@ -527,9 +522,10 @@ async function openEventModal(index, prefill = null, afterSave = null) {
     if (afterSave) {
       afterSave();
     } else {
+      showToast(index !== null ? '✅ Evento atualizado!' : '✅ Evento criado!');
       renderEventsPage();
     }
-  });
+  }, { once: true });
 
   openModal();
 }
@@ -710,17 +706,18 @@ async function renderListarPage() {
   }
 }
 
-function appendListLog(text, cls = '') {
-  if (!_listLogEl) return;
-  const atBottom = _listLogEl.scrollHeight - _listLogEl.clientHeight <= _listLogEl.scrollTop + 20;
-  const hint = _listLogEl.querySelector('span');
-  if (hint) _listLogEl.innerHTML = '';
+function _appendToLog(el, text, cls) {
+  if (!el) return;
+  const atBottom = el.scrollHeight - el.clientHeight <= el.scrollTop + 20;
+  if (el.querySelector('span')) el.innerHTML = '';
   const d = document.createElement('div');
   d.className = `log-line ${cls}`;
   d.textContent = text;
-  _listLogEl.appendChild(d);
-  if (atBottom) _listLogEl.scrollTop = _listLogEl.scrollHeight;
+  el.appendChild(d);
+  if (atBottom) el.scrollTop = el.scrollHeight;
 }
+
+function appendListLog(text, cls = '') { _appendToLog(_listLogEl, text, cls); }
 
 function clearListLog() {
   if (_listLogEl) _listLogEl.innerHTML = '<span class="text-gray-600">Log limpo.</span>';
@@ -833,17 +830,7 @@ function toggleAll(checked) {
   document.querySelectorAll('.ev-cb').forEach(cb => { cb.checked = checked; });
 }
 
-function appendLog(text, cls = '') {
-  if (!_logEl) return;
-  const atBottom = _logEl.scrollHeight - _logEl.clientHeight <= _logEl.scrollTop + 20;
-  const hint = _logEl.querySelector('span');
-  if (hint) _logEl.innerHTML = '';
-  const d = document.createElement('div');
-  d.className = `log-line ${cls}`;
-  d.textContent = text;
-  _logEl.appendChild(d);
-  if (atBottom) _logEl.scrollTop = _logEl.scrollHeight;
-}
+function appendLog(text, cls = '') { _appendToLog(_logEl, text, cls); }
 
 function clearLog() {
   if (_logEl) _logEl.innerHTML = '<span class="text-gray-600">Log limpo.</span>';
@@ -895,8 +882,9 @@ function scheduleFormHtml() {
       </div>
       <form id="schedule-form" class="schedule-modal-body">
         <div class="form-group">
-          <label class="form-label">Digite o horário para iniciar (HH:MM:SS.MMM):</label>
-          <input id="schedule-time" class="form-input schedule-input" value="${esc(state.scheduledTime || '06:00:00.000')}" inputmode="numeric">
+          <label class="form-label">Horário de início <span class="text-gray-500 font-normal">(HH:MM:SS.MMM — ex: 06:00:00.000)</span></label>
+          <input id="schedule-time" class="form-input schedule-input" value="${esc(state.scheduledTime || '06:00:00.000')}" inputmode="numeric" placeholder="06:00:00.000">
+          <p class="form-hint">ⓘ Use milissegundos para precisão: 06:00:00.500 dispara no meio do segundo.</p>
         </div>
         <div id="schedule-page-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
           ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
