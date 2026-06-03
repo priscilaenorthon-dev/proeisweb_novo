@@ -194,6 +194,11 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 
 _env_lock = threading.Lock()
 _LOGS_DIR = ROOT / "logs"
+_SSE_PADDING = ":" + (" " * 2048) + "\n\n"
+
+
+def _sse_data(item: dict[str, Any]) -> str:
+    return f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
 
 class _Capture:
@@ -249,7 +254,7 @@ def _scheduled_events_from_env() -> list[RunRequest]:
     elif isinstance(data, dict):
         data = [data]
     if not isinstance(data, list):
-        raise AutomationError("SCHEDULED_EVENTS_JSON deve ser um objeto, lista ou {'events': [...]}.")
+        raise AutomationError("SCHEDULED_EVENTS_JSON deve ser um objeto, lista ou {'events': [...] }.")
     return [RunRequest(**item) for item in data]
 
 
@@ -608,6 +613,7 @@ async def run_automation(body: RunRequest):
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
+        yield _SSE_PADDING
         elapsed_idle = 0
         try:
             while True:
@@ -616,22 +622,22 @@ async def run_automation(body: RunRequest):
                     elapsed_idle = 0
                     if item is None:
                         break
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    yield _sse_data(item)
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
                         aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
-                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
+                        yield _sse_data({"type": "log", "line": aviso})
                         break
                     yield ": keep-alive\n\n"
         finally:
-            yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
+            yield _sse_data({"type": "done", **result})
 
     return StreamingResponse(
         _stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
@@ -731,6 +737,7 @@ async def list_vagas(body: ListVagasRequest):
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
+        yield _SSE_PADDING
         elapsed_idle = 0
         try:
             while True:
@@ -739,22 +746,22 @@ async def list_vagas(body: ListVagasRequest):
                     elapsed_idle = 0
                     if item is None:
                         break
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+                    yield _sse_data(item)
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
                         aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
-                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
+                        yield _sse_data({"type": "log", "line": aviso})
                         break
                     yield ": keep-alive\n\n"
         finally:
-            yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
+            yield _sse_data({"type": "done", **result})
 
     return StreamingResponse(
         _stream(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
@@ -794,10 +801,8 @@ def get_log(op_id: str):
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
 
 
-# Serve arquivos estáticos em desenvolvimento local (Vercel gerencia isso em produção)
-if not os.getenv("VERCEL"):
-    from starlette.staticfiles import StaticFiles
-    app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")
+from starlette.staticfiles import StaticFiles
 
-# Expõe o app ASGI para o runtime Vercel Python
+app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")
+
 handler = app
