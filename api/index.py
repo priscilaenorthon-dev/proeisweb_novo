@@ -377,9 +377,12 @@ async def run_automation(body: RunRequest):
                         break
                     yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
+                    aviso = (
+                        "[AVISO] Operação excedeu 55s. "
+                        "Verifique sua conexão ou use timeouts menores nas Configurações."
+                    )
                     yield (
-                        f"data: {json.dumps({'type': 'log', 'line': '[AVISO] Operação excedeu 55s. '
-                        'Verifique sua conexão ou use timeouts menores nas Configurações.'})}\n\n"
+                        f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
                     )
                     break
         finally:
