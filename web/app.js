@@ -145,15 +145,13 @@ async function renderEventsPage() {
                   <div class="flex items-center gap-2 flex-wrap mb-2">
                     ${badge(ev.convenio || '—', 'blue')}
                     ${badge(ev.cpa || '—', 'purple')}
-                    ${badge(ev.disponivel === 'reserva' ? 'Reserva' : 'Não Reserva', ev.disponivel === 'reserva' ? 'orange' : 'green')}
+                    ${badge(ev.disponivel === 'reserva' ? 'Reserva' : 'Titular', ev.disponivel === 'reserva' ? 'orange' : 'green')}
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
-                    <span title="Data">📅 ${esc(ev.data_evento) || '<span class="text-gray-600">Próxima data disponível</span>'}</span>
-                    ${ev.hora_evento ? `<span title="Hora">🕐 ${esc(ev.hora_evento)}</span>` : ''}
-                    ${ev.turno ? `<span title="Turno">🔄 ${esc(ev.turno)}</span>` : ''}
+                    <span title="Data">📅 ${esc(formatListPreview(ev.data_evento, 'Próxima data disponível'))}</span>
+                    ${ev.hora_evento ? `<span title="Hora">🕐 ${esc(formatListPreview(ev.hora_evento, 'Qualquer horário'))}</span>` : ''}
                     ${ev.nome_evento ? `<span title="Nome">🏷️ ${esc(ev.nome_evento)}</span>` : ''}
                     ${ev.endereco ? `<span title="Endereço">📍 ${esc(ev.endereco)}</span>` : ''}
-                    <span title="Quantidade">🎫 ${esc(String(ev.quantidade || 1))}</span>
                   </div>
                 </div>
                 <div class="flex gap-2 shrink-0 mt-1">
@@ -167,6 +165,193 @@ async function renderEventsPage() {
       `}
     </div>
   `;
+}
+
+function splitCsv(value) {
+  return String(value || '').split(',').map(v => v.trim()).filter(Boolean);
+}
+
+function formatListPreview(value, fallback) {
+  const items = splitCsv(value);
+  if (items.length === 0) return fallback;
+  if (items.length <= 2) return items.join(', ');
+  return `${items.slice(0, 2).join(', ')} +${items.length - 2}`;
+}
+
+function toIsoDate(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return raw;
+}
+
+function timeOptions() {
+  const out = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return out;
+}
+
+function expandEventForRun(ev) {
+  const dates = splitCsv(ev.data_evento);
+  const times = splitCsv(ev.hora_evento);
+  const dateList = dates.length ? dates : [''];
+  const timeList = times.length ? times : [''];
+  const expanded = [];
+  for (const data_evento of dateList) {
+    for (const hora_evento of timeList) {
+      expanded.push({
+        ...ev,
+        data_evento,
+        hora_evento,
+        quantidade: 1,
+        scan_rounds: 1,
+        turno: '',
+      });
+    }
+  }
+  return expanded;
+}
+
+function eventModalStateFrom(ev) {
+  const today = new Date();
+  const selectedDates = splitCsv(ev.data_evento).map(toIsoDate).filter(Boolean);
+  const parsedFirst = selectedDates[0] ? new Date(`${selectedDates[0]}T12:00:00`) : today;
+  const first = Number.isNaN(parsedFirst.getTime()) ? today : parsedFirst;
+  return {
+    selectedDates,
+    selectedTimes: splitCsv(ev.hora_evento),
+    type: ev.disponivel === 'reserva' ? 'reserva' : 'nao-reserva',
+    year: first.getFullYear(),
+    month: first.getMonth(),
+    calendarOpen: false,
+    timesOpen: false,
+  };
+}
+
+function initEventModalControls() {
+  renderEventCalendar();
+  renderEventTimes();
+  updateEventModalValues();
+}
+
+function updateEventModalValues() {
+  const s = state.eventModal;
+  if (!s) return;
+  const dates = [...s.selectedDates].sort();
+  const times = [...s.selectedTimes].sort();
+  const datesInput = document.getElementById('event-dates-value');
+  const timesInput = document.getElementById('event-times-value');
+  const datesText = document.getElementById('event-dates-text');
+  const timesText = document.getElementById('event-times-text');
+  const typeInput = document.getElementById('event-type-value');
+
+  if (datesInput) datesInput.value = dates.join(',');
+  if (timesInput) timesInput.value = times.join(',');
+  if (typeInput) typeInput.value = s.type;
+  if (datesText) datesText.textContent = dates.length ? dates.join(', ') : 'Selecione as datas';
+  if (timesText) timesText.textContent = times.length ? times.join(', ') : 'Selecione os horários';
+}
+
+function toggleEventCalendarPanel() {
+  const s = state.eventModal;
+  if (!s) return;
+  s.calendarOpen = !s.calendarOpen;
+  document.getElementById('event-calendar')?.classList.toggle('hidden', !s.calendarOpen);
+}
+
+function toggleEventTimesPanel() {
+  const s = state.eventModal;
+  if (!s) return;
+  s.timesOpen = !s.timesOpen;
+  document.getElementById('event-times-options')?.classList.toggle('hidden', !s.timesOpen);
+}
+
+function changeEventCalendarMonth(delta) {
+  const s = state.eventModal;
+  if (!s) return;
+  const d = new Date(s.year, s.month + delta, 1);
+  s.year = d.getFullYear();
+  s.month = d.getMonth();
+  renderEventCalendar();
+}
+
+function toggleEventDate(iso) {
+  const s = state.eventModal;
+  if (!s) return;
+  const idx = s.selectedDates.indexOf(iso);
+  if (idx >= 0) s.selectedDates.splice(idx, 1);
+  else s.selectedDates.push(iso);
+  renderEventCalendar();
+  updateEventModalValues();
+}
+
+function renderEventCalendar() {
+  const s = state.eventModal;
+  const el = document.getElementById('event-calendar');
+  if (!s || !el) return;
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const first = new Date(s.year, s.month, 1);
+  const start = new Date(s.year, s.month, 1 - first.getDay());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const selected = s.selectedDates.includes(iso);
+    const muted = d.getMonth() !== s.month;
+    cells.push(`
+      <button type="button" class="calendar-day ${selected ? 'selected' : ''} ${muted ? 'muted' : ''}"
+        onclick="toggleEventDate('${iso}')">${d.getDate()}</button>
+    `);
+  }
+
+  el.innerHTML = `
+    <div class="calendar-head">
+      <button type="button" class="btn-icon" onclick="changeEventCalendarMonth(-1)">‹</button>
+      <strong>${monthNames[s.month]} ${s.year}</strong>
+      <button type="button" class="btn-icon" onclick="changeEventCalendarMonth(1)">›</button>
+    </div>
+    <div class="calendar-weekdays">
+      ${['D','S','T','Q','Q','S','S'].map(d => `<span>${d}</span>`).join('')}
+    </div>
+    <div class="calendar-grid">${cells.join('')}</div>
+  `;
+}
+
+function toggleEventTime(time) {
+  const s = state.eventModal;
+  if (!s) return;
+  const idx = s.selectedTimes.indexOf(time);
+  if (idx >= 0) s.selectedTimes.splice(idx, 1);
+  else s.selectedTimes.push(time);
+  renderEventTimes();
+  updateEventModalValues();
+}
+
+function renderEventTimes() {
+  const s = state.eventModal;
+  const el = document.getElementById('event-times-options');
+  if (!s || !el) return;
+  el.innerHTML = timeOptions().map(t => `
+    <button type="button" class="time-option ${s.selectedTimes.includes(t) ? 'selected' : ''}"
+      onclick="toggleEventTime('${t}')">${t}</button>
+  `).join('');
+}
+
+function setEventType(type) {
+  const s = state.eventModal;
+  if (!s) return;
+  s.type = type;
+  document.querySelectorAll('.event-type-toggle button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
+  });
+  updateEventModalValues();
 }
 
 async function openEventModal(index, prefill = null, afterSave = null) {
@@ -183,96 +368,88 @@ async function openEventModal(index, prefill = null, afterSave = null) {
   ).join('');
 
   const fromVaga = !isEdit && ev._label;
+  state.eventModal = eventModalStateFrom(ev);
 
   document.getElementById('modal-box').innerHTML = `
-    <div class="p-6">
-      <h3 class="text-xl font-bold text-white mb-1">${isEdit ? 'Editar Evento' : 'Adicionar Evento'}</h3>
-      ${fromVaga ? `<p class="text-xs text-teal-400 mb-4 truncate" title="${esc(ev._label)}">📋 Vaga: ${esc(ev._label)}</p>` : '<div class="mb-4"></div>'}
-      <form id="event-form" class="space-y-4">
+    <div class="event-modal">
+      <div class="event-modal-head">
+        <span class="text-blue-500 text-xl">▣</span>
+        <h3 class="text-xl font-bold text-white">${isEdit ? 'Editar Evento' : 'Novo Evento'}</h3>
+      </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="form-group">
-            <label class="form-label">Convênio *</label>
-            <select name="convenio" class="form-select" required>
-              <option value="">Selecione...</option>${convOptions}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">CPA *</label>
-            <select name="cpa" class="form-select" required>
-              <option value="">Selecione...</option>${cpaOptions}
-            </select>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div class="form-group">
-            <label class="form-label">Data do Evento</label>
-            <input type="text" name="data_evento" class="form-input"
-              placeholder="dd/mm/aaaa (vazio = próxima disponível)"
-              value="${esc(ev.data_evento || '')}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Hora do Evento</label>
-            <input type="text" name="hora_evento" class="form-input"
-              placeholder="14:30 ou 14h30"
-              value="${esc(ev.hora_evento || '')}">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div class="form-group">
-            <label class="form-label">Tipo de Vaga</label>
-            <select name="disponivel" class="form-select">
-              <option value="nao-reserva" ${(ev.disponivel||'nao-reserva')==='nao-reserva'?'selected':''}>Não Reserva</option>
-              <option value="reserva" ${ev.disponivel==='reserva'?'selected':''}>Reserva</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Quantidade</label>
-            <input type="number" name="quantidade" class="form-input" min="1" max="10" value="${esc(String(ev.quantidade||1))}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Turno</label>
-            <input type="text" name="turno" class="form-input" placeholder="manhã, tarde…" value="${esc(ev.turno||'')}">
-          </div>
-        </div>
+      <form id="event-form" class="event-modal-body">
+        ${fromVaga ? `<p class="text-xs text-teal-400 truncate" title="${esc(ev._label)}">📋 Vaga: ${esc(ev._label)}</p>` : ''}
 
         <div class="form-group">
-          <label class="form-label">Nome do Evento (filtro parcial)</label>
+          <label class="form-label">Nome do Evento</label>
           <input type="text" name="nome_evento" class="form-input"
-            placeholder="Deixe vazio para não filtrar por nome"
+            placeholder="Nome do evento"
             value="${esc(ev.nome_evento||'')}">
+          <p class="form-hint">ⓘ Você pode usar * para qualquer texto desconhecido.</p>
         </div>
 
         <div class="form-group">
-          <label class="form-label">Endereço (filtro parcial)</label>
+          <label class="form-label">Endereço</label>
           <input type="text" name="endereco" class="form-input"
-            placeholder="Deixe vazio para não filtrar por endereço"
+            placeholder="Endereço do evento (Ex: RUA*CENTRO)"
             value="${esc(ev.endereco||'')}">
+          <p class="form-hint">ⓘ Você pode usar * para qualquer texto desconhecido.</p>
         </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="form-group">
-            <label class="form-label">Rodadas de varredura</label>
-            <input type="number" name="scan_rounds" class="form-input" min="1" max="10" value="${esc(String(ev.scan_rounds||1))}">
+            <label class="form-label">Convênio</label>
+            <select name="convenio" class="form-select" required>
+              <option value="">Não Selecionado</option>${convOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">CPA</label>
+            <select name="cpa" class="form-select" required>
+              <option value="">Não Selecionado</option>${cpaOptions}
+            </select>
           </div>
         </div>
 
-        <div class="flex justify-end gap-3 pt-4 border-t border-gray-700">
+        <div class="form-group">
+          <label class="form-label">Datas</label>
+          <button type="button" id="event-dates-text" class="selection-field" onclick="toggleEventCalendarPanel()">Selecione as datas</button>
+          <input type="hidden" name="data_evento" id="event-dates-value">
+          <div id="event-calendar" class="calendar-panel hidden"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Horários</label>
+          <button type="button" id="event-times-text" class="selection-field" onclick="toggleEventTimesPanel()">Selecione os horários</button>
+          <input type="hidden" name="hora_evento" id="event-times-value">
+          <div id="event-times-options" class="time-options hidden"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Tipo de Vaga</label>
+          <div class="event-type-toggle">
+            <button type="button" data-type="nao-reserva" class="${state.eventModal.type === 'nao-reserva' ? 'active' : ''}" onclick="setEventType('nao-reserva')">Titular</button>
+            <button type="button" data-type="reserva" class="${state.eventModal.type === 'reserva' ? 'active' : ''}" onclick="setEventType('reserva')">Reserva</button>
+          </div>
+          <input type="hidden" name="disponivel" id="event-type-value">
+        </div>
+
+        <div class="event-modal-actions">
           <button type="button" onclick="closeModal()" class="btn-secondary">Cancelar</button>
-          <button type="submit" class="btn-primary">${isEdit ? 'Salvar Alterações' : 'Adicionar'}</button>
+          <button type="submit" class="btn-primary">${isEdit ? 'Salvar' : 'Salvar'}</button>
         </div>
       </form>
     </div>
   `;
+  initEventModalControls();
 
   document.getElementById('event-form').addEventListener('submit', e => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
-    data.quantidade = parseInt(data.quantidade) || 1;
-    data.scan_rounds = parseInt(data.scan_rounds) || 1;
+    data.quantidade = 1;
+    data.scan_rounds = 1;
+    data.turno = '';
     const evs = storage.getEvents();
     if (isEdit) evs[index] = data;
     else evs.push(data);
@@ -338,7 +515,7 @@ async function renderRunPage() {
                   <input type="checkbox" class="ev-cb mt-0.5" data-i="${i}" checked>
                   <div class="text-sm min-w-0">
                     <div class="text-gray-200 truncate font-medium">${esc(ev.convenio || '—')}</div>
-                    <div class="text-gray-500 text-xs truncate">${esc(ev.data_evento || 'Próxima data')} · ${esc(ev.cpa || '—')}</div>
+                    <div class="text-gray-500 text-xs truncate">${esc(formatListPreview(ev.data_evento, 'Próxima data'))} · ${esc(ev.cpa || '—')}</div>
                   </div>
                 </label>
               `).join('')}
@@ -605,7 +782,8 @@ async function startRun() {
   const settings = storage.getSettings();
   const allEvents = storage.getEvents();
   const selected = Array.from(document.querySelectorAll('.ev-cb:checked'))
-    .map(cb => allEvents[parseInt(cb.dataset.i)]);
+    .map(cb => allEvents[parseInt(cb.dataset.i)])
+    .flatMap(expandEventForRun);
 
   if (selected.length === 0) { alert('Selecione pelo menos um evento.'); return; }
   if (!(await hasUsableCredentials(settings))) {
@@ -662,7 +840,7 @@ async function startRun() {
       const d = defs[finalStatus] || defs.erro;
       const el = document.createElement('div');
       el.className = `result-badge ${d.cls}`;
-      el.innerHTML = `<span>${d.icon}</span><span class="font-medium">${esc(ev.convenio)}</span><span class="text-gray-500 text-xs">${esc(ev.data_evento || 'Próx. data')} · ${esc(ev.cpa)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
+      el.innerHTML = `<span>${d.icon}</span><span class="font-medium">${esc(ev.convenio)}</span><span class="text-gray-500 text-xs">${esc(ev.data_evento || 'Próx. data')}${ev.hora_evento ? ` · ${esc(ev.hora_evento)}` : ''} · ${esc(ev.cpa)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
       resultsEl.appendChild(el);
     }
   }
@@ -931,6 +1109,7 @@ function openModal() {
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   document.body.style.overflow = '';
+  state.eventModal = null;
 }
 document.getElementById('modal-overlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
@@ -1056,7 +1235,7 @@ async function renderHelpPage() {
             <div class="min-w-0">
               <h3 class="font-semibold text-white">Cadastre um evento</h3>
               <p class="text-sm text-gray-400 mt-1">
-                Em Eventos, informe convênio, CPA, data se quiser filtrar, tipo de vaga e quantidade.
+                Em Eventos, informe convênio, CPA, datas, horários e tipo de vaga.
               </p>
               <button onclick="navigate('events')" class="btn-secondary mt-3">Ir para Eventos</button>
             </div>
