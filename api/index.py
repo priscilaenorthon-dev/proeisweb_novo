@@ -10,7 +10,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Header, HTTPException, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -65,6 +65,7 @@ class RunRequest(BaseModel):
     connect_timeout: int = 0
     read_timeout: int = 0
     filter_max_attempts: int = 0
+    op_id: str = ""  # frontend-provided op_id para polling
 
 
 class SchedulerRunRequest(BaseModel):
@@ -88,6 +89,7 @@ class ListVagasRequest(BaseModel):
     connect_timeout: int = 0
     read_timeout: int = 0
     filter_max_attempts: int = 0
+    op_id: str = ""  # frontend-provided op_id para polling
 
 
 class ServicosRequest(BaseModel):
@@ -194,13 +196,14 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 
 _env_lock = threading.Lock()
 _LOGS_DIR = ROOT / "logs"
+_active_ops: dict[str, dict] = {}  # op_id → {"lines": [], "done": bool, "result": {}}
 
 
 class _Capture:
-    """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operação."""
+    """Redireciona stdout/stderr para _active_ops e para arquivo de log da operação."""
 
-    def __init__(self, emit_fn, log_file=None) -> None:
-        self._emit = emit_fn
+    def __init__(self, op_id: str, log_file=None) -> None:
+        self._op_id = op_id
         self._log_file = log_file
 
     def write(self, data: str) -> None:
@@ -212,7 +215,9 @@ class _Capture:
         if data.strip():
             for line in data.splitlines():
                 if line.strip():
-                    self._emit({"type": "log", "line": line})
+                    op = _active_ops.get(self._op_id)
+                    if op is not None:
+                        op["lines"].append(line)
                     if self._log_file:
                         try:
                             self._log_file.write(line + "\n")
@@ -532,14 +537,11 @@ async def run_automation(body: RunRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
-    op_id = uuid.uuid4().hex[:8]
+    raw_op = body.op_id if (body.op_id and re.match(r"^[A-Za-z0-9]{8,32}$", body.op_id)) else ""
+    op_id = raw_op or uuid.uuid4().hex[:8]
     ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     result: dict[str, Any] = {"status": "pendente", "message": "", "op_id": op_id}
-    loop = asyncio.get_event_loop()
-    aqueue: asyncio.Queue = asyncio.Queue()
-
-    def emit(msg: Optional[dict]) -> None:
-        loop.call_soon_threadsafe(aqueue.put_nowait, msg)
+    _active_ops[op_id] = {"lines": [], "done": False, "result": {}}
 
     def _run() -> None:
         old_out = sys.stdout
@@ -547,7 +549,7 @@ async def run_automation(body: RunRequest):
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
-        cap = _Capture(emit, log_file)
+        cap = _Capture(op_id, log_file)
         sys.stdout = cap
         sys.stderr = cap
         try:
@@ -603,29 +605,18 @@ async def run_automation(body: RunRequest):
                 log_file.close()
             except Exception:
                 pass
-            emit(None)
+            op = _active_ops.get(op_id)
+            if op is not None:
+                op["result"] = dict(result)
+                op["done"] = True
 
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
-        elapsed_idle = 0
-        try:
-            while True:
-                try:
-                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
-                    elapsed_idle = 0
-                    if item is None:
-                        break
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                except asyncio.TimeoutError:
-                    elapsed_idle += 3
-                    if elapsed_idle >= 120:
-                        aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
-                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
-                        break
-                    yield ": keep-alive\n\n"
-        finally:
-            yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
+        while thread.is_alive():
+            await asyncio.sleep(1)
+            yield f": alive {' ' * 2048}\n\n"
+        yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         _stream(),
@@ -647,14 +638,11 @@ async def list_vagas(body: ListVagasRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
-    op_id = uuid.uuid4().hex[:8]
+    raw_op = body.op_id if (body.op_id and re.match(r"^[A-Za-z0-9]{8,32}$", body.op_id)) else ""
+    op_id = raw_op or uuid.uuid4().hex[:8]
     ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     result: dict[str, Any] = {"status": "ok", "total": 0, "op_id": op_id}
-    loop = asyncio.get_event_loop()
-    aqueue: asyncio.Queue = asyncio.Queue()
-
-    def emit(msg: Optional[dict]) -> None:
-        loop.call_soon_threadsafe(aqueue.put_nowait, msg)
+    _active_ops[op_id] = {"lines": [], "done": False, "result": {}}
 
     def _run() -> None:
         old_out = sys.stdout
@@ -662,7 +650,7 @@ async def list_vagas(body: ListVagasRequest):
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_listar.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
-        cap = _Capture(emit, log_file)
+        cap = _Capture(op_id, log_file)
         sys.stdout = cap
         sys.stderr = cap
         try:
@@ -726,29 +714,18 @@ async def list_vagas(body: ListVagasRequest):
                 log_file.close()
             except Exception:
                 pass
-            emit(None)
+            op = _active_ops.get(op_id)
+            if op is not None:
+                op["result"] = dict(result)
+                op["done"] = True
 
     async def _stream():
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
-        elapsed_idle = 0
-        try:
-            while True:
-                try:
-                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
-                    elapsed_idle = 0
-                    if item is None:
-                        break
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-                except asyncio.TimeoutError:
-                    elapsed_idle += 3
-                    if elapsed_idle >= 120:
-                        aviso = "[AVISO] Operação excedeu 2 min sem resposta. Verifique conexão ou timeouts."
-                        yield f"data: {json.dumps({'type': 'log', 'line': aviso}, ensure_ascii=False)}\n\n"
-                        break
-                    yield ": keep-alive\n\n"
-        finally:
-            yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
+        while thread.is_alive():
+            await asyncio.sleep(1)
+            yield f": alive {' ' * 2048}\n\n"
+        yield f"data: {json.dumps({'type': 'done', **result}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         _stream(),
@@ -759,6 +736,23 @@ async def list_vagas(body: ListVagasRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.get("/api/ops/{op_id}")
+async def poll_op_status(op_id: str, since: int = 0):
+    """Retorna novas linhas de log desde o índice `since`. Frontend faz polling 1×/s."""
+    if not re.match(r"^[A-Za-z0-9]{8,32}$", op_id):
+        raise HTTPException(status_code=400, detail="op_id inválido.")
+    op = _active_ops.get(op_id)
+    if op is None:
+        raise HTTPException(status_code=404, detail="Operação não encontrada.")
+    lines: list[str] = op["lines"]
+    return {
+        "lines": lines[since:],
+        "total": len(lines),
+        "done": op["done"],
+        "result": op.get("result", {}),
+    }
 
 
 @app.get("/api/logs")
@@ -783,7 +777,7 @@ def list_logs():
 @app.get("/api/logs/{op_id}")
 def get_log(op_id: str):
     """Retorna o conteúdo do arquivo de log de uma operação."""
-    if not re.match(r"^[a-f0-9]{8}$", op_id):
+    if not re.match(r"^[A-Za-z0-9]{8,32}$", op_id):
         raise HTTPException(status_code=400, detail="op_id inválido.")
     if not _LOGS_DIR.exists():
         raise HTTPException(status_code=404, detail="Pasta de logs não encontrada.")

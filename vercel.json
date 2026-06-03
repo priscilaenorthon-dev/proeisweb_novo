@@ -3,7 +3,8 @@
   "regions": ["gru1"],
   "functions": {
     "api/index.py": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "supportsResponseStreaming": true
     }
   },
   "builds": [

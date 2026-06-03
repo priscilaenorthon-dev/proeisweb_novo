@@ -729,6 +729,76 @@ function clearListLog() {
   if (vc) vc.textContent = '';
 }
 
+function _genOpId() {
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
+function _processLogLine(line, opts) {
+  // opts: { appendFn, vagasBody, vagasEl, vagasCount, vagasStore, currentTipo, convenio, cpa }
+  if (/\(reserva\)/i.test(line))     opts.currentTipo = 'reserva';
+  if (/\(nao-reserva\)/i.test(line)) opts.currentTipo = 'nao-reserva';
+
+  if (line.startsWith('[VAGA]')) {
+    try {
+      const vaga = JSON.parse(line.slice(6).trim());
+      const horaM = (vaga.label || '').match(/\b(\d{1,2})[hH:](\d{2})\b/);
+      const hora = horaM ? `${horaM[1]}h${horaM[2]}` : '';
+      const parsed = parseVagaLabel(vaga.label || '');
+      const nomeEvento = vaga.nome || parsed.nome;
+      const endEvento  = vaga.endereco || parsed.endereco;
+      opts.totalVagas = (opts.totalVagas || 0) + 1;
+      if (opts.vagasBody) {
+        const vagaIdx = opts.vagasStore.length;
+        opts.vagasStore.push({ ...vaga, convenio: opts.convenio, cpa: opts.cpa, tipo: opts.currentTipo, hora });
+        const tipoBadge = opts.currentTipo === 'reserva'
+          ? '<span class="badge-tipo reserva">Reserva</span>'
+          : '<span class="badge-tipo titular">Titular</span>';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="font-mono whitespace-nowrap">${esc(vaga.data || '—')}</td>
+          <td class="font-mono whitespace-nowrap text-teal-400">${esc(hora) || '—'}</td>
+          <td>${tipoBadge}</td>
+          <td class="vagas-col-convenio"><div title="${esc(opts.convenio)}">${esc(opts.convenio)}</div><div class="text-gray-600 text-xs">${esc(opts.cpa)}</div></td>
+          <td><div title="${esc(nomeEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nomeEvento || vaga.label || '—')}</div></td>
+          <td class="vagas-col-endereco"><div title="${esc(endEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(endEvento || '—')}</div></td>
+          <td class="text-center"><button class="btn-vaga-add" title="Criar evento" onclick="vagaParaEvento(${vagaIdx})">➕</button></td>
+        `;
+        opts.vagasBody.appendChild(tr);
+      }
+      if (opts.vagasEl) opts.vagasEl.classList.remove('hidden');
+      if (opts.vagasCount) opts.vagasCount.textContent = `${opts.totalVagas} vaga(s)`;
+    } catch { opts.appendFn(line, 'text-gray-300'); }
+  } else {
+    opts.appendFn(line, logClass(line));
+  }
+  return opts;
+}
+
+async function _pollUntilDone(op_id, signal, onLine, onDone) {
+  let since = 0;
+  let notFound = 0;
+  while (true) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (signal.aborted) break;
+    let data;
+    try {
+      const r = await fetch(`/api/ops/${op_id}?since=${since}`, { signal });
+      if (r.status === 404) { if (++notFound > 15) { onDone({ status: 'erro', message: 'Operação não encontrada no servidor.' }); return; } continue; }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      data = await r.json();
+    } catch (err) {
+      if (err.name === 'AbortError') break;
+      onDone({ status: 'erro', message: err.message });
+      return;
+    }
+    notFound = 0;
+    for (const line of (data.lines || [])) onLine(line);
+    since = data.total;
+    if (data.done) { onDone(data.result || {}); return; }
+  }
+  onDone({ status: 'cancelado' });
+}
+
 async function startListVagas() {
   const settings = storage.getSettings();
   const convenio       = document.getElementById('lv-convenio')?.value || '';
@@ -748,74 +818,39 @@ async function startListVagas() {
 
   if (_listLogEl) _listLogEl.innerHTML = '';
   _vagasStore = [];
-  const vagasEl   = document.getElementById('vagas-el');
-  const vagasBody = document.getElementById('vagas-body');
+  const vagasEl    = document.getElementById('vagas-el');
+  const vagasBody  = document.getElementById('vagas-body');
   const vagasCount = document.getElementById('vagas-count');
-  if (vagasEl) { vagasEl.classList.add('hidden'); }
+  if (vagasEl) vagasEl.classList.add('hidden');
   if (vagasBody) vagasBody.innerHTML = '';
-  let totalVagas = 0;
-  let _currentTipo = 'nao-reserva'; // rastreia pelo stream de log
 
   appendListLog(`=== Listando: ${convenio} / ${cpa} ===`, 'text-teal-400 font-semibold');
 
-  const body = { ...settingsToBody(settings), convenio, cpa, data_especifica: dataEspecifica };
+  const op_id = _genOpId();
+  const body = { ...settingsToBody(settings), convenio, cpa, data_especifica: dataEspecifica, op_id };
 
-  try {
-    for await (const msg of api.stream('/api/list-vagas', body, state.abortController.signal)) {
-      if (!state.running) break;
-      if (msg.type === 'log') {
-        // Detecta tipo (reserva / titular) pelos logs da lib
-        if (/\(reserva\)/i.test(msg.line))     _currentTipo = 'reserva';
-        if (/\(nao-reserva\)/i.test(msg.line)) _currentTipo = 'nao-reserva';
+  // Fire SSE POST (keeps Vercel function alive) — response not consumed
+  fetch('/api/list-vagas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: state.abortController.signal,
+  }).catch(() => {});
 
-        if (msg.line.startsWith('[VAGA]')) {
-          try {
-            const vaga = JSON.parse(msg.line.slice(6).trim());
-            const horaM = (vaga.label || '').match(/\b(\d{1,2})[hH:](\d{2})\b/);
-            const hora = horaM ? `${horaM[1]}h${horaM[2]}` : '';
-            // Usa campos pré-parseados do backend; fallback para JS se ausentes
-            const parsed = parseVagaLabel(vaga.label || '');
-            const nomeEvento = vaga.nome || parsed.nome;
-            const endEvento  = vaga.endereco || parsed.endereco;
-            totalVagas++;
-            if (vagasBody) {
-              const vagaIdx = _vagasStore.length;
-              _vagasStore.push({ ...vaga, convenio, cpa, tipo: _currentTipo, hora });
-              const isReserva = _currentTipo === 'reserva';
-              const tipoBadge = isReserva
-                ? '<span class="badge-tipo reserva">Reserva</span>'
-                : '<span class="badge-tipo titular">Titular</span>';
-              const tr = document.createElement('tr');
-              tr.innerHTML = `
-                <td class="font-mono whitespace-nowrap">${esc(vaga.data || '—')}</td>
-                <td class="font-mono whitespace-nowrap text-teal-400">${esc(hora) || '—'}</td>
-                <td>${tipoBadge}</td>
-                <td class="vagas-col-convenio"><div title="${esc(convenio)}">${esc(convenio)}</div><div class="text-gray-600 text-xs">${esc(cpa)}</div></td>
-                <td><div title="${esc(nomeEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nomeEvento || vaga.label || '—')}</div></td>
-                <td class="vagas-col-endereco"><div title="${esc(endEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(endEvento || '—')}</div></td>
-                <td class="text-center"><button class="btn-vaga-add" title="Criar evento" onclick="vagaParaEvento(${vagaIdx})">➕</button></td>
-              `;
-              vagasBody.appendChild(tr);
-            }
-            if (vagasEl) vagasEl.classList.remove('hidden');
-            if (vagasCount) vagasCount.textContent = `${totalVagas} vaga(s)`;
-          } catch { appendListLog(msg.line, 'text-gray-300'); }
-        } else {
-          appendListLog(msg.line, logClass(msg.line));
-        }
-      } else if (msg.type === 'done') {
-        if (msg.status === 'erro') appendListLog(`[ERRO] ${msg.message}`, 'text-red-400');
-        else appendListLog(`✓ Total: ${msg.total || totalVagas} vaga(s) encontrada(s)`, 'text-green-400');
-        if (msg.op_id) appendListLog(`[LOG] ID da operação: ${msg.op_id} — /api/logs/${msg.op_id}`, 'text-gray-500');
-      }
+  const lineCtx = { appendFn: appendListLog, vagasBody, vagasEl, vagasCount, vagasStore: _vagasStore, currentTipo: 'nao-reserva', totalVagas: 0, convenio, cpa };
+
+  await _pollUntilDone(op_id, state.abortController.signal,
+    line => _processLogLine(line, lineCtx),
+    result => {
+      const total = lineCtx.totalVagas;
+      if (result.status === 'erro') appendListLog(`[ERRO] ${result.message}`, 'text-red-400');
+      else if (result.status === 'cancelado') appendListLog('[PARADO] Cancelado.', 'text-orange-400');
+      else appendListLog(`✓ Total: ${result.total || total} vaga(s) encontrada(s)`, 'text-green-400');
+      appendListLog(`[LOG] ID da operação: ${op_id} — /api/logs/${op_id}`, 'text-gray-500');
+      if (total === 0 && result.status !== 'erro' && result.status !== 'cancelado') appendListLog('Nenhuma vaga encontrada.', 'text-gray-500');
+      appendListLog('=== Concluído ===', 'text-teal-400 font-semibold');
     }
-  } catch (err) {
-    if (err.name !== 'AbortError') appendListLog(`[ERRO] ${err.message}`, 'text-red-400');
-    else appendListLog('[PARADO] Cancelado.', 'text-orange-400');
-  }
-
-  if (totalVagas === 0 && state.running) appendListLog('Nenhuma vaga encontrada.', 'text-gray-500');
-  appendListLog('=== Concluído ===', 'text-teal-400 font-semibold');
+  );
 
   state.running = false;
   document.getElementById('list-btn')?.classList.remove('hidden');
@@ -985,31 +1020,32 @@ async function startRun() {
     const ev = selected[i];
     appendLog(`\n▶ Evento ${i + 1}/${selected.length}: ${ev.convenio} / ${ev.cpa}`, 'text-yellow-400 font-semibold');
 
-    const body = {
-      ...ev,
-      ...settingsToBody(settings),
-      dry_run: false,
-    };
+    const op_id = _genOpId();
+    const body = { ...ev, ...settingsToBody(settings), dry_run: false, op_id };
+
+    // Fire SSE POST (keeps Vercel function alive)
+    fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: state.abortController.signal,
+    }).catch(() => {});
 
     let finalStatus = 'erro';
     let finalMsg = '';
+    let aborted = false;
 
-    try {
-      for await (const msg of api.stream('/api/run', body, state.abortController.signal)) {
-        if (!state.running) break;
-        if (msg.type === 'log') {
-          appendLog(msg.line, logClass(msg.line));
-        } else if (msg.type === 'done') {
-          finalStatus = msg.status;
-          finalMsg = msg.message || '';
-          if (msg.op_id) appendLog(`[LOG] ID da operação: ${msg.op_id} — /api/logs/${msg.op_id}`, 'text-gray-500');
-        }
+    await _pollUntilDone(op_id, state.abortController.signal,
+      line => appendLog(line, logClass(line)),
+      result => {
+        if (result.status === 'cancelado') { aborted = true; return; }
+        finalStatus = result.status || 'erro';
+        finalMsg = result.message || '';
+        appendLog(`[LOG] ID da operação: ${op_id} — /api/logs/${op_id}`, 'text-gray-500');
       }
-    } catch (err) {
-      if (err.name === 'AbortError') { appendLog('[PARADO] Cancelado.', 'text-orange-400'); break; }
-      finalStatus = 'erro'; finalMsg = err.message;
-      appendLog(`[ERRO] ${err.message}`, 'text-red-400');
-    }
+    );
+
+    if (aborted) { appendLog('[PARADO] Cancelado.', 'text-orange-400'); break; }
 
     if (resultsEl) {
       resultsEl.classList.remove('hidden');
