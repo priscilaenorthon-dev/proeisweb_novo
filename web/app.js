@@ -1004,6 +1004,78 @@ async function loadServicos() {
   }
 }
 
+// ── Como usar Page ─────────────────────────────────────────
+async function renderHelpPage() {
+  document.getElementById('content').innerHTML = `
+    <div class="p-6 max-w-3xl">
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold text-white">Como usar</h2>
+        <p class="text-gray-500 text-sm mt-1">Fluxo rápido para confirmar que está tudo pronto.</p>
+      </div>
+
+      <div class="space-y-4">
+        <div class="card">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded bg-teal-900/60 text-teal-300 text-sm font-bold">1</span>
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">Teste a API primeiro</h3>
+              <p class="text-sm text-gray-400 mt-1">
+                Abra Configurações, confira login, senha e Gemini API Key, depois clique em Testar API.
+                Se aparecer Login OK, o sistema está pronto.
+              </p>
+              <button onclick="navigate('settings')" class="btn-primary mt-3">Abrir Configurações</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded bg-gray-800 text-gray-300 text-sm font-bold">2</span>
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">Cadastre um evento</h3>
+              <p class="text-sm text-gray-400 mt-1">
+                Em Eventos, informe convênio, CPA, data se quiser filtrar, tipo de vaga e quantidade.
+              </p>
+              <button onclick="navigate('events')" class="btn-secondary mt-3">Ir para Eventos</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded bg-gray-800 text-gray-300 text-sm font-bold">3</span>
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">Consulte antes de executar</h3>
+              <p class="text-sm text-gray-400 mt-1">
+                Use Listar Vagas para ver oportunidades disponíveis sem marcar nada.
+              </p>
+              <button onclick="navigate('listar')" class="btn-secondary mt-3">Listar Vagas</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="flex items-start gap-3">
+            <span class="inline-flex w-7 h-7 shrink-0 items-center justify-center rounded bg-gray-800 text-gray-300 text-sm font-bold">4</span>
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">Execute a automação</h3>
+              <p class="text-sm text-gray-400 mt-1">
+                Em Executar, selecione os eventos e acompanhe o log até aparecer o resultado final.
+              </p>
+              <button onclick="navigate('run')" class="btn-secondary mt-3">Ir para Executar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-badge result-info">
+          <span>!</span>
+          <span>Se algo falhar, volte em Configurações e rode Testar API novamente.</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // ── Render dispatcher ──────────────────────────────────────
 async function renderPage() {
   const c = document.getElementById('content');
@@ -1013,6 +1085,7 @@ async function renderPage() {
   else if (state.page === 'listar')   await renderListarPage();
   else if (state.page === 'run')      await renderRunPage();
   else if (state.page === 'settings') await renderSettingsPage();
+  else if (state.page === 'help')     await renderHelpPage();
 }
 
 // ── API status ─────────────────────────────────────────────
