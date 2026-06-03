@@ -212,8 +212,8 @@ async function renderEventsPage() {
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
                     <span title="Data">📅 ${esc(formatListPreview(ev.data_evento, 'Próxima data disponível'))}</span>
                     ${ev.hora_evento ? `<span title="Hora">🕐 ${esc(formatListPreview(ev.hora_evento, 'Qualquer horário'))}</span>` : ''}
-                    ${ev.nome_evento ? `<span title="Nome">🏷️ ${esc(ev.nome_evento)}</span>` : ''}
-                    ${ev.endereco ? `<span title="Endereço">📍 ${esc(ev.endereco)}</span>` : ''}
+                    ${ev.nome_evento ? `<span title="${esc(ev.nome_evento)}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">🏷️ ${esc(ev.nome_evento)}</span>` : ''}
+                    ${ev.endereco ? `<span title="${esc(ev.endereco)}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">📍 ${esc(ev.endereco)}</span>` : ''}
                   </div>
                 </div>
                 <div class="flex gap-2 shrink-0 mt-1">
@@ -679,10 +679,10 @@ async function renderListarPage() {
                     <th style="width:90px">Data</th>
                     <th style="width:70px">Hora</th>
                     <th style="width:90px">Tipo</th>
-                    <th style="width:120px">Convênio</th>
-                    <th style="min-width:180px">Nome do Evento</th>
-                    <th style="min-width:180px">Endereço</th>
-                    <th style="width:40px"></th>
+                    <th class="vagas-col-convenio" style="width:120px">Convênio</th>
+                    <th style="min-width:160px">Nome do Evento</th>
+                    <th class="vagas-col-endereco" style="min-width:160px">Endereço</th>
+                    <th style="width:44px"></th>
                   </tr>
                 </thead>
                 <tbody id="vagas-body"></tbody>
@@ -788,9 +788,9 @@ async function startListVagas() {
                 <td class="font-mono whitespace-nowrap">${esc(vaga.data || '—')}</td>
                 <td class="font-mono whitespace-nowrap text-teal-400">${esc(hora) || '—'}</td>
                 <td>${tipoBadge}</td>
-                <td><div title="${esc(convenio)}">${esc(convenio)}</div><div class="text-gray-600 text-xs">${esc(cpa)}</div></td>
-                <td><div title="${esc(nomeEvento)}">${esc(nomeEvento || vaga.label || '—')}</div></td>
-                <td><div title="${esc(endEvento)}">${esc(endEvento || '—')}</div></td>
+                <td class="vagas-col-convenio"><div title="${esc(convenio)}">${esc(convenio)}</div><div class="text-gray-600 text-xs">${esc(cpa)}</div></td>
+                <td><div title="${esc(nomeEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nomeEvento || vaga.label || '—')}</div></td>
+                <td class="vagas-col-endereco"><div title="${esc(endEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(endEvento || '—')}</div></td>
                 <td class="text-center"><button class="btn-vaga-add" title="Criar evento" onclick="vagaParaEvento(${vagaIdx})">➕</button></td>
               `;
               vagasBody.appendChild(tr);
@@ -1273,6 +1273,7 @@ function showToast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
   t.textContent = msg;
+  t.addEventListener('click', () => { t.classList.remove('toast-show'); setTimeout(() => t.remove(), 300); });
   document.body.appendChild(t);
   requestAnimationFrame(() => t.classList.add('toast-show'));
   setTimeout(() => { t.classList.remove('toast-show'); setTimeout(() => t.remove(), 300); }, 2800);
