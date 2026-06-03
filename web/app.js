@@ -6,6 +6,7 @@
 const state = {
   page: 'events',
   options: null,
+  envDefaults: null,
   running: false,
   abortController: null,
 };
@@ -78,6 +79,23 @@ async function loadOptions() {
   try { state.options = await api.get('/api/options'); }
   catch { state.options = { convenios: [], cpas: [] }; }
   return state.options;
+}
+
+async function loadEnvDefaults() {
+  if (state.envDefaults) return state.envDefaults;
+  try { state.envDefaults = await api.get('/api/env-defaults'); }
+  catch { state.envDefaults = {}; }
+  return state.envDefaults;
+}
+
+function hasLocalCredentials(settings) {
+  return Boolean(settings.login && settings.password && settings.gemini_api_key);
+}
+
+async function hasUsableCredentials(settings) {
+  if (hasLocalCredentials(settings)) return true;
+  const env = await loadEnvDefaults();
+  return Boolean(env.has_login && env.has_password && env.has_gemini_api_key);
 }
 
 // ── Utils ──────────────────────────────────────────────────
@@ -470,7 +488,7 @@ async function startListVagas() {
   const dataEspecifica = document.getElementById('lv-data')?.value.trim() || '';
 
   if (!convenio || !cpa) { alert('Selecione convênio e CPA.'); return; }
-  if (!settings.login || !settings.password || !settings.gemini_api_key) {
+  if (!(await hasUsableCredentials(settings))) {
     if (confirm('Credenciais não configuradas. Ir para Configurações?')) navigate('settings');
     return;
   }
@@ -590,7 +608,7 @@ async function startRun() {
     .map(cb => allEvents[parseInt(cb.dataset.i)]);
 
   if (selected.length === 0) { alert('Selecione pelo menos um evento.'); return; }
-  if (!settings.login || !settings.password || !settings.gemini_api_key) {
+  if (!(await hasUsableCredentials(settings))) {
     if (confirm('Credenciais não configuradas. Ir para Configurações?')) navigate('settings');
     return;
   }
@@ -747,31 +765,32 @@ function stopRun() {
 
 // ── Settings Page ──────────────────────────────────────────
 async function renderSettingsPage() {
-  // Carrega defaults do .env, mescla com o que já está salvo no localStorage
+  // Carrega apenas flags/defaults seguros; segredos do servidor não são expostos no navegador.
   let envDef = {};
-  try { envDef = await api.get('/api/env-defaults'); } catch { /* offline */ }
+  try { envDef = await loadEnvDefaults(); } catch { /* offline */ }
   const saved = storage.getSettings();
-  // localStorage tem prioridade; se vazio, usa o valor do .env
   const s = {};
-  const keys = ['login','password','gemini_api_key',
-                 'http_attempts','connect_timeout','read_timeout','filter_max_attempts'];
+  const keys = ['http_attempts','connect_timeout','read_timeout','filter_max_attempts'];
   for (const k of keys) {
     s[k] = saved[k] !== undefined && saved[k] !== '' && saved[k] !== 0
       ? saved[k]
       : (envDef[k] ?? (typeof envDef[k] === 'number' ? 0 : ''));
   }
-  // Salva automaticamente se localStorage estava vazio
-  if (!saved.login && s.login) storage.saveSettings(s);
+  s.login = saved.login || '';
+  s.password = saved.password || '';
+  s.gemini_api_key = saved.gemini_api_key || '';
+  const serverCreds = envDef.has_login && envDef.has_password && envDef.has_gemini_api_key;
 
   document.getElementById('content').innerHTML = `
     <div class="p-6 max-w-2xl">
       <div class="mb-6">
         <h2 class="text-2xl font-bold text-white">Configurações</h2>
-        <p class="text-gray-500 text-sm mt-1">Preenchido automaticamente a partir do .env · Salvo no seu navegador</p>
+        <p class="text-gray-500 text-sm mt-1">Use credenciais locais ou as configuradas no servidor</p>
       </div>
 
       <div class="card mb-5">
         <h3 class="font-semibold text-white mb-4">🔑 Credenciais PROEIS</h3>
+        ${serverCreds ? '<div class="result-badge result-info mb-4"><span>!</span><span>Credenciais configuradas no servidor. Você pode deixar estes campos em branco.</span></div>' : ''}
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div class="form-group">
             <label class="form-label">Login (Matrícula) *</label>
@@ -850,8 +869,11 @@ async function testApi() {
   const gemini_key   = document.getElementById('s-gemini')?.value || '';
 
   if (!login || !password || !gemini_key) {
-    showFeedback('⚠️ Preencha login, senha e Gemini API Key antes de testar.', 'info');
-    return;
+    const env = await loadEnvDefaults();
+    if (!(env.has_login && env.has_password && env.has_gemini_api_key)) {
+      showFeedback('⚠️ Preencha login, senha e Gemini API Key antes de testar.', 'info');
+      return;
+    }
   }
 
   showFeedback('⏳ Fazendo login no PROEIS para verificar a conta... (aguarde ~20s)', 'info');
@@ -936,12 +958,12 @@ async function renderServicosPage() {
   `;
   // Carrega automaticamente se tiver credenciais salvas
   const s = storage.getSettings();
-  if (s.login && s.password && s.gemini_api_key) loadServicos();
+  if (await hasUsableCredentials(s)) loadServicos();
 }
 
 async function loadServicos() {
   const s = storage.getSettings();
-  if (!s.login || !s.password || !s.gemini_api_key) {
+  if (!(await hasUsableCredentials(s))) {
     if (confirm('Credenciais não configuradas. Ir para Configurações?')) navigate('settings');
     return;
   }

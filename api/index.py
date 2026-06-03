@@ -237,9 +237,9 @@ def get_env_defaults():
         try: return int(os.getenv(name, str(default)))
         except ValueError: return default
     return {
-        "login":               os.getenv("PROEIS_LOGIN", ""),
-        "password":            os.getenv("PROEIS_PASSWORD", ""),
-        "gemini_api_key":      os.getenv("GEMINI_API_KEY", ""),
+        "has_login":           bool(os.getenv("PROEIS_LOGIN", "")),
+        "has_password":        bool(os.getenv("PROEIS_PASSWORD", "")),
+        "has_gemini_api_key":  bool(os.getenv("GEMINI_API_KEY", "")),
         "http_attempts":       _int("PROEIS_HTTP_ATTEMPTS"),
         "connect_timeout":     _int("PROEIS_CONNECT_TIMEOUT"),
         "read_timeout":        _int("PROEIS_READ_TIMEOUT"),
