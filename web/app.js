@@ -7,6 +7,9 @@ const state = {
   page: 'events',
   options: null,
   envDefaults: null,
+  scheduleTimer: null,
+  scheduledAt: null,
+  scheduledTime: '',
   running: false,
   abortController: null,
 };
@@ -70,7 +73,7 @@ function navigate(page) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const nav = document.getElementById(`nav-${page}`);
   if (nav) nav.classList.add('active');
-  renderPage();
+  return renderPage();
 }
 
 // ── Options loader ─────────────────────────────────────────
@@ -522,7 +525,11 @@ async function renderRunPage() {
             </div>
           </div>
           <button id="run-btn" onclick="startRun()" class="btn-primary w-full">▶ Executar</button>
+          <button onclick="openScheduleModal()" class="btn-secondary w-full">ⓘ Agendar Automação</button>
           <button id="stop-btn" onclick="stopRun()" class="btn-danger w-full hidden">⏹ Parar</button>
+          <div id="schedule-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
+            ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
+          </div>
         </div>
         <div class="flex-1 flex flex-col gap-4 min-w-0">
           <div class="card flex flex-col" style="flex:1; min-height:360px">
@@ -775,6 +782,106 @@ function clearLog() {
   if (_logEl) _logEl.innerHTML = '<span class="text-gray-600">Log limpo.</span>';
   const r = document.getElementById('results-el');
   if (r) { r.innerHTML = ''; r.classList.add('hidden'); }
+}
+
+function parseScheduleTime(value) {
+  const m = String(value || '').trim().match(/^(\d{2}):(\d{2}):(\d{2})\.(\d{3})$/);
+  if (!m) return null;
+  const [, hh, mm, ss, ms] = m.map(Number);
+  if (hh > 23 || mm > 59 || ss > 59 || ms > 999) return null;
+  const target = new Date();
+  target.setHours(hh, mm, ss, ms);
+  if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
+  return target;
+}
+
+function formatScheduledAt(date) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date);
+}
+
+function updateScheduleStatus() {
+  const el = document.getElementById('schedule-status');
+  if (!el) return;
+  if (!state.scheduledAt) {
+    el.classList.add('hidden');
+    el.textContent = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.textContent = `Agendado para ${formatScheduledAt(state.scheduledAt)}`;
+}
+
+function openScheduleModal() {
+  document.getElementById('modal-box').innerHTML = `
+    <div class="schedule-modal">
+      <div class="schedule-modal-head">
+        <span class="schedule-info-icon">i</span>
+        <h3 class="text-xl font-bold text-white">Agendar Automação</h3>
+      </div>
+      <form id="schedule-form" class="schedule-modal-body">
+        <div class="form-group">
+          <label class="form-label">Digite o horário para iniciar (HH:MM:SS.MMM):</label>
+          <input id="schedule-time" class="form-input schedule-input" value="${esc(state.scheduledTime || '06:00:00.000')}" inputmode="numeric">
+        </div>
+        <div id="schedule-feedback" class="hidden result-badge result-err"></div>
+        <div class="schedule-modal-actions">
+          <button type="button" onclick="closeModal()" class="btn-secondary">Cancelar</button>
+          <button type="submit" class="btn-primary">OK</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.getElementById('schedule-form').addEventListener('submit', e => {
+    e.preventDefault();
+    scheduleAutomation();
+  });
+  openModal();
+  const input = document.getElementById('schedule-time');
+  input?.focus();
+  input?.select();
+}
+
+function scheduleAutomation() {
+  const input = document.getElementById('schedule-time');
+  const feedback = document.getElementById('schedule-feedback');
+  const raw = input?.value || '';
+  const target = parseScheduleTime(raw);
+  if (!target) {
+    if (feedback) {
+      feedback.textContent = 'Informe no formato HH:MM:SS.MMM. Ex: 06:00:00.000';
+      feedback.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (state.scheduleTimer) clearTimeout(state.scheduleTimer);
+  state.scheduledAt = target;
+  state.scheduledTime = raw;
+  state.scheduleTimer = setTimeout(async () => {
+    state.scheduleTimer = null;
+    state.scheduledAt = null;
+    updateScheduleStatus();
+    if (state.page !== 'run') await navigate('run');
+    if (!state.running) await startRun();
+  }, target.getTime() - Date.now());
+
+  closeModal();
+  updateScheduleStatus();
+  showToast(`Automação agendada para ${formatScheduledAt(target)}`);
+}
+
+function cancelScheduledAutomation() {
+  if (state.scheduleTimer) clearTimeout(state.scheduleTimer);
+  state.scheduleTimer = null;
+  state.scheduledAt = null;
+  state.scheduledTime = '';
+  updateScheduleStatus();
 }
 
 // ── Executar ───────────────────────────────────────────────
