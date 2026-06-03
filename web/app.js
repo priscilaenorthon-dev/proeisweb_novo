@@ -1062,29 +1062,28 @@ function vagaParaEvento(idx) {
   const vaga = _vagasStore[idx];
   if (!vaga) return;
 
-  // Tenta extrair hora do label (ex: "14h30", "14:30", "14H00")
-  const horaMatch = vaga.label?.match(/\b(\d{1,2})[hH:](\d{2})\b/);
-  const hora = horaMatch ? `${horaMatch[1]}h${horaMatch[2]}` : '';
+  // Converte hora armazenada ("14h30") para o formato do seletor ("14:30")
+  const horaFormatted = vaga.hora
+    ? vaga.hora.replace(/^(\d{1,2})h(\d{2})$/i, (_, h, m) => `${h.padStart(2, '0')}:${m}`)
+    : '';
 
-  // Converte data de "dd/mm/yyyy" para o formato aceito pelo bot
-  const data = vaga.data || '';
+  const { nome: nomeEvento, endereco: endEvento } = parseVagaLabel(vaga.label || '');
 
   const prefill = {
     convenio:    vaga.convenio || '',
     cpa:         vaga.cpa      || '',
-    data_evento: data,
-    hora_evento: '',          // vazio: não filtra por hora ao executar (mais robusto)
+    data_evento: vaga.data     || '',
+    hora_evento: horaFormatted,
     disponivel:  vaga.tipo === 'reserva' ? 'reserva' : 'nao-reserva',
     quantidade:  1,
-    nome_evento: '',          // vazio: não filtra por nome ao executar
+    nome_evento: nomeEvento,
     turno:       '',
-    endereco:    '',
+    endereco:    endEvento,
     scan_rounds: 1,
     _label:      vaga.label,
   };
 
   openEventModal(null, prefill, () => {
-    // Fica na página Listar Vagas e mostra confirmação
     showToast('✅ Evento criado! Vagas continuam visíveis.');
   });
 }
