@@ -225,6 +225,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 _env_lock = threading.Lock()
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
+_LOGS_LIMIT = 50
 
 
 def _sse_data(item: dict[str, Any]) -> str:
@@ -234,9 +235,10 @@ def _sse_data(item: dict[str, Any]) -> str:
 class _Capture:
     """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operaÃ§Ã£o."""
 
-    def __init__(self, emit_fn, log_file=None) -> None:
+    def __init__(self, emit_fn, log_file=None, lines: list[str] | None = None) -> None:
         self._emit = emit_fn
         self._log_file = log_file
+        self._lines = lines
 
     def write(self, data: str) -> None:
         try:
@@ -248,6 +250,8 @@ class _Capture:
             for line in data.splitlines():
                 if line.strip():
                     self._emit({"type": "log", "line": line})
+                    if self._lines is not None:
+                        self._lines.append(line)
                     if self._log_file:
                         try:
                             self._log_file.write(line + "\n")
@@ -301,6 +305,10 @@ def _events_collection():
     return _firestore_db().collection(os.getenv("FIRESTORE_EVENTS_COLLECTION", "events"))
 
 
+def _logs_collection():
+    return _firestore_db().collection(os.getenv("FIRESTORE_LOGS_COLLECTION", "operation_logs"))
+
+
 def _event_payload(body: RunRequest) -> dict[str, Any]:
     _clean_request_text(body)
     data = body.model_dump()
@@ -323,6 +331,43 @@ def _stored_events() -> list[dict[str, Any]]:
 
 def _scheduled_events_from_firestore() -> list[RunRequest]:
     return [RunRequest(**{k: v for k, v in item.items() if k != "id"}) for item in _stored_events()]
+
+
+def _save_operation_log(
+    op_id: str,
+    kind: str,
+    status: str,
+    lines: list[str],
+    log_name: str,
+    result: dict[str, Any],
+) -> None:
+    try:
+        content = "\n".join(lines[-2000:])
+        _logs_collection().document(op_id).set({
+            "op_id": op_id,
+            "kind": kind,
+            "status": status,
+            "name": log_name,
+            "content": content,
+            "line_count": len(lines),
+            "size_kb": round(len(content.encode("utf-8")) / 1024, 1),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "result": {k: v for k, v in result.items() if isinstance(v, (str, int, float, bool)) or v is None},
+        })
+    except Exception:
+        pass
+
+
+def _firestore_logs() -> list[dict[str, Any]]:
+    try:
+        logs = []
+        for doc in _logs_collection().stream():
+            data = doc.to_dict() or {}
+            data.setdefault("op_id", doc.id)
+            logs.append(data)
+        return sorted(logs, key=lambda item: item.get("created_at", ""), reverse=True)[:_LOGS_LIMIT]
+    except Exception:
+        return []
 
 
 class TestLoginRequest(BaseModel):
@@ -584,7 +629,8 @@ async def run_automation(body: RunRequest):
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
-        cap = _Capture(emit, log_file)
+        log_lines: list[str] = []
+        cap = _Capture(emit, log_file, log_lines)
         sys.stdout = cap
         sys.stderr = cap
         try:
@@ -639,6 +685,7 @@ async def run_automation(body: RunRequest):
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
             print(f"[OP] OperaÃ§Ã£o encerrada: status={result['status']} | log={log_path.name}")
+            _save_operation_log(op_id, "run", result["status"], log_lines, log_path.name, result)
             sys.stdout = old_out
             sys.stderr = old_err
             try:
@@ -706,7 +753,8 @@ async def list_vagas(body: ListVagasRequest):
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_listar.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
-        cap = _Capture(emit, log_file)
+        log_lines: list[str] = []
+        cap = _Capture(emit, log_file, log_lines)
         sys.stdout = cap
         sys.stderr = cap
         try:
@@ -764,6 +812,7 @@ async def list_vagas(body: ListVagasRequest):
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
             print(f"[OP] Listagem encerrada: status={result['status']} | log={log_path.name}")
+            _save_operation_log(op_id, "listar", result["status"], log_lines, log_path.name, result)
             sys.stdout = old_out
             sys.stderr = old_err
             try:
@@ -809,9 +858,25 @@ async def list_vagas(body: ListVagasRequest):
 @app.get("/api/logs")
 def list_logs():
     """Lista as 20 operaÃ§Ãµes mais recentes (arquivos de log)."""
+    stored = _firestore_logs()
+    if stored:
+        return {
+            "logs": [
+                {
+                    "name": item.get("name") or f"{item.get('op_id', '')}.log",
+                    "op_id": item.get("op_id", ""),
+                    "kind": item.get("kind", ""),
+                    "status": item.get("status", ""),
+                    "size_kb": item.get("size_kb", 0),
+                    "created_at": item.get("created_at", ""),
+                    "line_count": item.get("line_count", 0),
+                }
+                for item in stored
+            ]
+        }
     if not _LOGS_DIR.exists():
         return {"logs": []}
-    files = sorted(_LOGS_DIR.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)[:20]
+    files = sorted(_LOGS_DIR.glob("*.log"), key=lambda f: f.stat().st_mtime, reverse=True)[:_LOGS_LIMIT]
     return {
         "logs": [
             {
@@ -823,6 +888,32 @@ def list_logs():
             for f in files
         ]
     }
+
+
+@app.get("/api/log-content/{op_id}")
+def get_persisted_log(op_id: str):
+    if not re.match(r"^[a-f0-9]{8}$", op_id):
+        raise HTTPException(status_code=400, detail="op_id invalido.")
+    try:
+        doc = _logs_collection().document(op_id).get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            return {
+                "op_id": op_id,
+                "name": data.get("name", f"{op_id}.log"),
+                "kind": data.get("kind", ""),
+                "status": data.get("status", ""),
+                "created_at": data.get("created_at", ""),
+                "content": data.get("content", ""),
+            }
+    except Exception:
+        pass
+    if _LOGS_DIR.exists():
+        matches = list(_LOGS_DIR.glob(f"*_{op_id}_*.log"))
+        if matches:
+            log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
+            return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
+    raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
 
 
 @app.get("/api/logs/{op_id}")
