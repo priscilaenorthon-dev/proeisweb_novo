@@ -587,8 +587,8 @@ async function renderListarPage() {
           <button id="list-stop-btn" onclick="stopList()" class="btn-danger w-full hidden">⏹ Parar</button>
         </div>
         <!-- Painel direito -->
-        <div class="flex-1 flex flex-col gap-4 min-w-0">
-          <div class="card flex flex-col" style="min-height:200px; max-height:260px">
+        <div class="flex-1 flex flex-col gap-4 min-w-0 listar-workspace">
+          <div class="card flex flex-col listar-log-card" style="min-height:200px; max-height:260px">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-semibold text-white">Log</span>
               <button onclick="clearListLog()" class="text-xs text-gray-600 hover:text-gray-400">Limpar</button>
@@ -597,7 +597,7 @@ async function renderListarPage() {
               <span class="text-gray-600">Selecione convênio e CPA e clique em Listar...</span>
             </div>
           </div>
-          <div id="vagas-el" class="hidden flex-1 flex flex-col">
+          <div id="vagas-el" class="hidden flex-1 flex flex-col listar-vagas-panel">
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm font-semibold text-white">Vagas encontradas</span>
               <span id="vagas-count" class="text-xs text-gray-500"></span>

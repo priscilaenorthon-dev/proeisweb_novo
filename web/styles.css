@@ -651,6 +651,30 @@ input[type="checkbox"] {
     max-height: 200px;
   }
 
+  .listar-workspace {
+    flex-direction: row !important;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 8px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .listar-log-card,
+  .listar-vagas-panel {
+    flex: 0 0 calc(100vw - 28px);
+    min-width: calc(100vw - 28px);
+    scroll-snap-align: start;
+  }
+
+  .listar-vagas-panel.hidden {
+    display: none !important;
+  }
+
+  .listar-vagas-panel .card {
+    min-height: 260px;
+  }
+
   .card,
   .event-card,
   .srv-card {
