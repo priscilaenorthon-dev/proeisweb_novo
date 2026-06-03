@@ -584,9 +584,15 @@ class ProeisHTTP:
 
         timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
         max_429_retries = 2
-        retry_wait = 62
+        max_5xx_retries = 4
+        retry_wait_429 = 62
+        retry_wait_5xx = 8  # initial backoff for 5xx; doubles each attempt
 
-        for attempt in range(1, max_429_retries + 1):
+        total_attempts = max(max_429_retries, max_5xx_retries)
+        _5xx_attempt = 0
+        _429_attempt = 0
+
+        for attempt in range(1, total_attempts + 1):
             if stop_event and stop_event.is_set():
                 raise AutomationError("resolucao paralela cancelada apos vencedor")
             try:
@@ -598,11 +604,21 @@ class ProeisHTTP:
                 raise AutomationError("resolucao paralela cancelada apos vencedor")
 
             if resp.status_code == 429:
-                if attempt < max_429_retries:
-                    _log("CAPTCHA", f"[Gemini] Rate limit (429); aguardando {retry_wait}s para reset da janela de 1min ({attempt}/{max_429_retries})...")
-                    self._sleep_or_cancel_parallel_captcha(retry_wait, stop_event)
+                _429_attempt += 1
+                if _429_attempt < max_429_retries:
+                    _log("CAPTCHA", f"[Gemini] Rate limit (429); aguardando {retry_wait_429}s para reset da janela de 1min ({_429_attempt}/{max_429_retries})...")
+                    self._sleep_or_cancel_parallel_captcha(retry_wait_429, stop_event)
                     continue
                 raise AutomationError(f"Gemini: rate limit atingido apos {max_429_retries} tentativas")
+
+            if resp.status_code >= 500:
+                _5xx_attempt += 1
+                wait = retry_wait_5xx * (2 ** (_5xx_attempt - 1))
+                if _5xx_attempt < max_5xx_retries:
+                    _log("CAPTCHA", f"[Gemini] Servico indisponivel (HTTP {resp.status_code}); aguardando {wait}s e tentando novamente ({_5xx_attempt}/{max_5xx_retries})...")
+                    self._sleep_or_cancel_parallel_captcha(wait, stop_event)
+                    continue
+                raise AutomationError(f"Gemini: servico indisponivel apos {max_5xx_retries} tentativas (ultimo: HTTP {resp.status_code})")
 
             if resp.status_code != 200:
                 raise AutomationError(f"Gemini: HTTP {resp.status_code}: {resp.text[:200]}")
