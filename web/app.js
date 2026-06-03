@@ -1108,6 +1108,10 @@ async function renderPage() {
   else if (state.page === 'run')      await renderRunPage();
   else if (state.page === 'settings') await renderSettingsPage();
   else if (state.page === 'help')     await renderHelpPage();
+  else {
+    state.page = 'help';
+    await renderHelpPage();
+  }
 }
 
 // ── API status ─────────────────────────────────────────────
