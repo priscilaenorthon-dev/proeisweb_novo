@@ -1,0 +1,15 @@
+.git
+.claude
+.venv
+__pycache__
+*.pyc
+*.pyo
+
+.env
+logs
+debug_html
+eventos.json
+config/local_settings.json
+config/batch_events_runtime.json
+
+.vercel
