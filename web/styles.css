@@ -298,6 +298,12 @@ body {
   background: #111827;
 }
 
+.schedule-page-panel {
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
 .schedule-modal-head {
   display: flex;
   align-items: center;

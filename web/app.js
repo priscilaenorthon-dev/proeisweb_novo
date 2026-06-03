@@ -525,7 +525,6 @@ async function renderRunPage() {
             </div>
           </div>
           <button id="run-btn" onclick="startRun()" class="btn-primary w-full">▶ Executar</button>
-          <button onclick="openScheduleModal()" class="btn-secondary w-full">ⓘ Agendar Automação</button>
           <button id="stop-btn" onclick="stopRun()" class="btn-danger w-full hidden">⏹ Parar</button>
           <div id="schedule-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
             ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
@@ -806,20 +805,22 @@ function formatScheduledAt(date) {
 }
 
 function updateScheduleStatus() {
-  const el = document.getElementById('schedule-status');
-  if (!el) return;
-  if (!state.scheduledAt) {
-    el.classList.add('hidden');
-    el.textContent = '';
-    return;
+  for (const id of ['schedule-status', 'schedule-page-status']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    if (!state.scheduledAt) {
+      el.classList.add('hidden');
+      el.textContent = '';
+    } else {
+      el.classList.remove('hidden');
+      el.textContent = `Agendado para ${formatScheduledAt(state.scheduledAt)}`;
+    }
   }
-  el.classList.remove('hidden');
-  el.textContent = `Agendado para ${formatScheduledAt(state.scheduledAt)}`;
 }
 
-function openScheduleModal() {
-  document.getElementById('modal-box').innerHTML = `
-    <div class="schedule-modal">
+function scheduleFormHtml() {
+  return `
+    <div class="schedule-modal schedule-page-panel">
       <div class="schedule-modal-head">
         <span class="schedule-info-icon">i</span>
         <h3 class="text-xl font-bold text-white">Agendar Automação</h3>
@@ -829,22 +830,36 @@ function openScheduleModal() {
           <label class="form-label">Digite o horário para iniciar (HH:MM:SS.MMM):</label>
           <input id="schedule-time" class="form-input schedule-input" value="${esc(state.scheduledTime || '06:00:00.000')}" inputmode="numeric">
         </div>
+        <div id="schedule-page-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
+          ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
+        </div>
         <div id="schedule-feedback" class="hidden result-badge result-err"></div>
         <div class="schedule-modal-actions">
-          <button type="button" onclick="closeModal()" class="btn-secondary">Cancelar</button>
+          <button type="button" onclick="cancelScheduledAutomation()" class="btn-secondary">Cancelar</button>
           <button type="submit" class="btn-primary">OK</button>
         </div>
       </form>
     </div>
   `;
+}
+
+function bindScheduleForm() {
   document.getElementById('schedule-form').addEventListener('submit', e => {
     e.preventDefault();
     scheduleAutomation();
   });
-  openModal();
   const input = document.getElementById('schedule-time');
   input?.focus();
   input?.select();
+}
+
+function renderSchedulePage() {
+  document.getElementById('content').innerHTML = `
+    <div class="p-6 max-w-xl">
+      ${scheduleFormHtml()}
+    </div>
+  `;
+  bindScheduleForm();
 }
 
 function scheduleAutomation() {
@@ -871,7 +886,6 @@ function scheduleAutomation() {
     if (!state.running) await startRun();
   }, target.getTime() - Date.now());
 
-  closeModal();
   updateScheduleStatus();
   showToast(`Automação agendada para ${formatScheduledAt(target)}`);
 }
@@ -882,6 +896,7 @@ function cancelScheduledAutomation() {
   state.scheduledAt = null;
   state.scheduledTime = '';
   updateScheduleStatus();
+  showToast('Agendamento cancelado.');
 }
 
 // ── Executar ───────────────────────────────────────────────
@@ -1392,6 +1407,7 @@ async function renderPage() {
   else if (state.page === 'servicos') await renderServicosPage();
   else if (state.page === 'listar')   await renderListarPage();
   else if (state.page === 'run')      await renderRunPage();
+  else if (state.page === 'schedule') await renderSchedulePage();
   else if (state.page === 'settings') await renderSettingsPage();
   else if (state.page === 'help')     await renderHelpPage();
   else {
