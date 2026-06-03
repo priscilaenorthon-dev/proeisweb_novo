@@ -84,6 +84,30 @@
   function fixVisibleText() {
     fixChromeText();
     fixMainText();
+    moveFeedbackPanels();
+  }
+
+  function moveFeedbackPanels() {
+    const runResults = document.getElementById('results-el');
+    if (runResults && runResults.dataset.topMoved !== '1') {
+      const page = runResults.closest('.p-6');
+      const header = page?.firstElementChild;
+      if (page && header) {
+        runResults.dataset.topMoved = '1';
+        runResults.className = 'space-y-2 hidden sticky top-4 z-20';
+        page.insertBefore(runResults, header.nextSibling);
+      }
+    }
+
+    const settingsFeedback = document.getElementById('s-feedback');
+    if (settingsFeedback && settingsFeedback.dataset.topMoved !== '1') {
+      const page = settingsFeedback.closest('.p-6');
+      const header = page?.firstElementChild;
+      if (page && header) {
+        settingsFeedback.dataset.topMoved = '1';
+        page.insertBefore(settingsFeedback, header.nextSibling);
+      }
+    }
   }
 
   function cleanEndereco(value) {
@@ -225,6 +249,30 @@
     Promise.resolve(result).finally(() => setTimeout(fixVisibleText, 0));
     return result;
   };
+
+  const originalShowFeedback = window.showFeedback;
+  if (typeof originalShowFeedback === 'function') {
+    window.showFeedback = function showFeedbackTop(msg, type) {
+      originalShowFeedback(msg, type);
+      moveFeedbackPanels();
+      const feedback = document.getElementById('s-feedback');
+      if (feedback) feedback.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  }
+
+  const originalStartRun = window.startRun;
+  if (typeof originalStartRun === 'function') {
+    window.startRun = async function startRunTopFeedback() {
+      moveFeedbackPanels();
+      const result = await originalStartRun();
+      moveFeedbackPanels();
+      const results = document.getElementById('results-el');
+      if (results && !results.classList.contains('hidden')) {
+        results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return result;
+    };
+  }
 
   ensureLogsNav();
   fixVisibleText();
