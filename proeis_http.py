@@ -35,16 +35,33 @@ _LOG_FILE_HANDLE = None
 
 # â”€â”€ Logger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+_OP = threading.local()
+
+
+def _op_start() -> None:
+    _OP.t = time.monotonic()
+
+
+def _op_elapsed() -> str:
+    t = getattr(_OP, "t", None)
+    if t is None:
+        return ""
+    return f" +{time.monotonic() - t:.1f}s"
+
+
 def _log(tag: str, msg: str) -> None:
-    """Imprime linha de log com timestamp e tag categorizadora."""
     ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"[{ts}] [{tag:<9}] {msg}")
+    print(f"[{ts}]{_op_elapsed()} [{tag:<9}] {msg}")
 
 
 def _step(current: int, total: int, tag: str, msg: str) -> None:
-    """Imprime etapa numerada de um fluxo."""
     ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"[{ts}] [{tag:<9}] Etapa {current}/{total}: {msg}")
+    print(f"[{ts}]{_op_elapsed()} [{tag:<9}] Etapa {current}/{total}: {msg}")
+
+
+def _phase(name: str) -> None:
+    ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{ts}]{_op_elapsed()} [{'─'*9}] ══ {name} ══")
 
 
 # â”€â”€ Tee (stdout + arquivo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -241,8 +258,31 @@ def reparar_mojibake(value: Any) -> str:
     return text
 
 
+def _parse_vaga_label(label: str) -> tuple[str, str]:
+    """Extrai (nome_evento, endereco) do label concatenado da linha HTML do PROEIS."""
+    # Remove texto do botão e colunas de disponibilidade que o get_text() inclui
+    clean = re.sub(r"\s+(?:disponivel\s+)?reserva\s*[-–]\s*curso.*$", "", label, flags=re.IGNORECASE).strip()
+    clean = re.sub(r"\s+\d+\s*[-–]\s*curso.*$", "", clean, flags=re.IGNORECASE).strip()
+    clean = re.sub(r"\s+eu\s+vou\s*$", "", clean, flags=re.IGNORECASE).strip()
+    # Separa nome (antes do horário HH:MM ou HHhMM) do endereço (após)
+    m = re.match(r"^(.+?)\s+\d{1,2}:\d{2}(?::\d{2})?\s+(.*)$", clean)
+    if m:
+        return m.group(1).rstrip("-– ").strip(), m.group(2).strip()
+    m2 = re.match(r"^(.+?)\s+\d{1,2}h\d{2}\s*(.*)$", clean, re.IGNORECASE)
+    if m2:
+        return m2.group(1).strip(), m2.group(2).strip()
+    return clean, ""
+
+
 def emit_vaga(label: str, data_evento: str = "", acao: str = "Visualizacao") -> None:
-    print("[VAGA] " + json.dumps({"data": display_date_for_log(data_evento), "acao": acao, "label": reparar_mojibake(label)}, ensure_ascii=False))
+    nome, endereco = _parse_vaga_label(label)
+    print("[VAGA] " + json.dumps({
+        "data": display_date_for_log(data_evento),
+        "acao": acao,
+        "label": reparar_mojibake(label),
+        "nome": reparar_mojibake(nome),
+        "endereco": reparar_mojibake(endereco),
+    }, ensure_ascii=False))
 
 
 # â”€â”€ Cliente HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -270,6 +310,7 @@ class ProeisHTTP:
         self.last_captcha_id: str | None = None
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
+        _op_start()
         _log("INFO", f"Solver ativo: {'Gemini 2.5 Flash' if gemini_api_key else 'nenhum'}")
 
     # â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -365,7 +406,8 @@ class ProeisHTTP:
     # â”€â”€ Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def login_flow(self) -> None:
-        _log("LOGIN", "=== Iniciando fluxo de login ===")
+        _phase("FASE 1/4: LOGIN")
+        _log("LOGIN", "Iniciando autenticacao no PROEIS...")
         max_attempts = 6
 
         _step(1, 5, "LOGIN", f"Carregando pagina inicial: {DEFAULT_URL}")
@@ -706,8 +748,8 @@ class ProeisHTTP:
     # â”€â”€ NavegaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _try_navigate_to_service_page(self) -> bool:
-        _log("NAV", "=== Navegando para tela de servicos ===")
-        _log("NAV", f"GET {MENU_URL.split('/')[-1]}...")
+        _phase("FASE 2/4: NAVEGAÇÃO")
+        _log("NAV", f"Acessando menu e navegando para tela de serviços ({MENU_URL.split('/')[-1]})...")
         soup = self.request("GET", MENU_URL)
 
         if soup.select_one("#btnEscala") or "btnEscala" in str(soup):
@@ -826,7 +868,8 @@ class ProeisHTTP:
     # â”€â”€ Filtros â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def fill_filters(self, convenio: str, data_evento: str, cpa: str, prefer: str = "nao-reserva") -> None:
-        _log("FILTRO", f"=== Preenchendo filtros: convenio='{convenio}' data='{data_evento}' cpa='{cpa}' prefer='{prefer}' ===")
+        _phase("FASE 3/4: FILTROS")
+        _log("FILTRO", f"Convênio='{convenio}' | Data='{data_evento}' | CPA='{cpa}' | Prefer='{prefer}'")
         soup = self.require_soup()
         fields = self.find_fields(soup)
 
@@ -993,7 +1036,8 @@ class ProeisHTTP:
         turno: str = "",
         endereco: str = "",
     ) -> int:
-        _log("VAGA", f"=== Marcacao por varredura: quantidade={quantidade}, prefer='{prefer}', rounds={scan_rounds}, data_inicial='{start_date}' ===")
+        _phase("FASE 4/4: MARCAÇÃO DE VAGA")
+        _log("VAGA", f"Meta={quantidade} vaga(s) | Prefer='{prefer}' | Rounds={scan_rounds} | Data inicial='{start_date}'")
         self.navigate_to_service_page()
         dates = self.dates_for_convenio(convenio)
         print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
