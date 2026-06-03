@@ -48,7 +48,7 @@ class RunRequest(BaseModel):
     gemini_api_key: str = ""
     twocaptcha_key: str = ""
     gemini_model: str = ""
-    # ParÃ¢metros do evento
+    # Parametros do evento
     convenio: str = ""
     data_evento: str = ""
     cpa: str = ""
@@ -60,11 +60,16 @@ class RunRequest(BaseModel):
     endereco: str = ""
     dry_run: bool = False
     scan_rounds: int = 1
-    # ConfiguraÃ§Ãµes avanÃ§adas (0 = usar padrÃ£o)
+    # Configuracoes avancadas (0 = usar padrao)
     http_attempts: int = 0
     connect_timeout: int = 0
     read_timeout: int = 0
     filter_max_attempts: int = 0
+    captcha_invalid_retries: int = 0
+    captcha_refresh_after_invalids: int = 0
+    gemini_timeout: int = 0
+    auto_retry_rounds: int = 0
+    auto_retry_wait_seconds: int = 0
 
 
 class SchedulerRunRequest(BaseModel):
@@ -83,11 +88,14 @@ class ListVagasRequest(BaseModel):
     gemini_model: str = ""
     convenio: str = ""
     cpa: str = ""
-    data_especifica: str = ""   # dd/mm/yyyy ou yyyy-mm-dd â€” se vazio, varre todas
+    data_especifica: str = ""   # dd/mm/yyyy ou yyyy-mm-dd; se vazio, varre todas
     http_attempts: int = 0
     connect_timeout: int = 0
     read_timeout: int = 0
     filter_max_attempts: int = 0
+    captcha_invalid_retries: int = 0
+    captcha_refresh_after_invalids: int = 0
+    gemini_timeout: int = 0
 
 
 class ServicosRequest(BaseModel):
@@ -97,7 +105,7 @@ class ServicosRequest(BaseModel):
 
 
 def _parse_servicos(raw: str) -> list[dict]:
-    """Parseia o conteÃºdo do textarea txtEveVoluntario em registros estruturados."""
+    """Parseia o conteudo do textarea txtEveVoluntario em registros estruturados."""
     servicos: list[dict] = []
     for block in re.split(r"={4,}", raw):
         block = reparar_mojibake(block.strip())
@@ -140,6 +148,16 @@ def _apply_runtime_options(body: RunRequest) -> None:
         os.environ["PROEIS_READ_TIMEOUT"] = str(body.read_timeout)
     if body.filter_max_attempts > 0:
         os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
+    if getattr(body, "captcha_invalid_retries", 0) > 0:
+        os.environ["TWOCAPTCHA_INVALID_RETRIES"] = str(body.captcha_invalid_retries)
+    if getattr(body, "captcha_refresh_after_invalids", 0) > 0:
+        os.environ["TWOCAPTCHA_REFRESH_AFTER_INVALIDS"] = str(body.captcha_refresh_after_invalids)
+    if getattr(body, "gemini_timeout", 0) > 0:
+        os.environ["GEMINI_TIMEOUT"] = str(body.gemini_timeout)
+    if getattr(body, "auto_retry_rounds", 0) > 0:
+        os.environ["PROEIS_AUTO_RETRY_ROUNDS"] = str(body.auto_retry_rounds)
+    if getattr(body, "auto_retry_wait_seconds", 0) > 0:
+        os.environ["PROEIS_AUTO_RETRY_WAIT_SECONDS"] = str(body.auto_retry_wait_seconds)
     if body.gemini_model:
         os.environ["GEMINI_MODEL"] = body.gemini_model
 
@@ -181,15 +199,15 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
     if not login_val:
-        raise AutomationError("Login nÃ£o configurado.")
+        raise AutomationError("Login nao configurado.")
     if not password_val:
-        raise AutomationError("Senha nÃ£o configurada.")
+        raise AutomationError("Senha nao configurada.")
     if not gemini_key:
-        raise AutomationError("GEMINI_API_KEY nÃ£o configurada.")
+        raise AutomationError("GEMINI_API_KEY nao configurada.")
     if not body.convenio:
-        raise AutomationError("ConvÃªnio nÃ£o informado.")
+        raise AutomationError("Convenio nao informado.")
     if not body.cpa:
-        raise AutomationError("CPA nÃ£o informado.")
+        raise AutomationError("CPA nao informado.")
 
     _apply_runtime_options(body)
 
@@ -233,7 +251,7 @@ def _sse_data(item: dict[str, Any]) -> str:
 
 
 class _Capture:
-    """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operaÃ§Ã£o."""
+    """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operacao."""
 
     def __init__(self, emit_fn, log_file=None, lines: list[str] | None = None) -> None:
         self._emit = emit_fn
@@ -282,7 +300,7 @@ def _scheduled_events_from_env() -> list[RunRequest]:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise AutomationError(f"SCHEDULED_EVENTS_JSON invÃ¡lido: {exc}") from exc
+        raise AutomationError(f"SCHEDULED_EVENTS_JSON invalido: {exc}") from exc
     if isinstance(data, dict) and "events" in data:
         data = data["events"]
     elif isinstance(data, dict):
@@ -296,7 +314,7 @@ def _firestore_db():
     try:
         from google.cloud import firestore
     except ImportError as exc:
-        raise AutomationError("DependÃªncia google-cloud-firestore nÃ£o instalada.") from exc
+        raise AutomationError("Dependencia google-cloud-firestore nao instalada.") from exc
     database = os.getenv("FIRESTORE_DATABASE", "proeis")
     return firestore.Client(database=database)
 
@@ -398,9 +416,9 @@ def scheduler_run(
     load_env_file()
     expected_secret = os.getenv("SCHEDULER_SECRET", "")
     if not expected_secret:
-        raise HTTPException(status_code=500, detail="SCHEDULER_SECRET nÃ£o configurado.")
+        raise HTTPException(status_code=500, detail="SCHEDULER_SECRET nao configurado.")
     if not secrets.compare_digest(x_scheduler_secret, expected_secret):
-        raise HTTPException(status_code=401, detail="Scheduler nÃ£o autorizado.")
+        raise HTTPException(status_code=401, detail="Scheduler nao autorizado.")
 
     try:
         events = body.events if body and body.events else _scheduled_events_from_firestore()
@@ -432,7 +450,7 @@ def scheduler_run(
 
 @app.post("/api/test-login")
 async def test_login(body: TestLoginRequest):
-    """Faz login real e retorna o nome do usuÃ¡rio autenticado."""
+    """Faz login real e retorna o nome do usuario autenticado."""
     load_env_file()
     login_val  = body.login       or os.getenv("PROEIS_LOGIN", "")
     pwd_val    = body.password    or os.getenv("PROEIS_PASSWORD", "")
@@ -451,12 +469,10 @@ async def test_login(body: TestLoginRequest):
         )
         login_with_retries(client, "Teste de login via painel web")
 
-        # Busca o nome do usuÃ¡rio no menu pÃ³s-login
         from proeis_http import MENU_URL  # noqa: E402
         soup = client.request("GET", MENU_URL)
 
         nome = ""
-        # Tenta seletores comuns de portais ASP.NET do governo
         for sel in [
             "#lblNomeVoluntario", "#lblNome", "#lblUsuario",
             "[id*='lblNome']", "[id*='lblUsuario']", "[id*='nomeUsuario']",
@@ -468,15 +484,13 @@ async def test_login(body: TestLoginRequest):
                 if nome:
                     break
 
-        # Fallback: procura padrÃ£o "Bem-vindo, NOME" ou "OlÃ¡, NOME"
         if not nome:
             import re as _re
             txt = soup.get_text(" ", strip=True)
-            m = _re.search(r"(?:bem[- ]?vindo|ol[aÃ¡])[,:]?\s+([A-ZÃ€-Ãš][A-Za-zÃ€-Ãº\s]{2,40})", txt, _re.IGNORECASE)
+            m = _re.search(r"(?:bem[- ]?vindo|ol[aá])[,:]?\s+([A-ZÀ-Ú][A-Za-zÀ-ú\s]{2,40})", txt, _re.IGNORECASE)
             if m:
                 nome = m.group(1).strip()
 
-        # Ãšltimo recurso: pega o primeiro heading da pÃ¡gina
         if not nome:
             h = soup.select_one("h1, h2, h3")
             if h:
@@ -485,7 +499,7 @@ async def test_login(body: TestLoginRequest):
         return {
             "ok": True,
             "login": login_val,
-            "nome": nome or "(nome nÃ£o encontrado na pÃ¡gina)",
+            "nome": nome or "(nome nao encontrado na pagina)",
         }
 
     except Exception as exc:
@@ -500,17 +514,16 @@ def get_servicos_marcados(body: ServicosRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
 
     if not login_val or not pwd_val or not gemini_key:
-        return {"ok": False, "message": "Credenciais nÃ£o configuradas.", "servicos": [], "nome": ""}
+        return {"ok": False, "message": "Credenciais nao configuradas.", "servicos": [], "nome": ""}
 
     try:
         client = ProeisHTTP(
             login=login_val, password=pwd_val,
             twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
         )
-        login_with_retries(client, "Buscar serviÃ§os marcados")
+        login_with_retries(client, "Buscar servicos marcados")
         soup = client.request("GET", MENU_URL)
 
-        # Nome do usuÃ¡rio
         nome = ""
         for sel in ["#lblNomeVoluntario", "#lblNome", "[id*='lblNome']"]:
             el = soup.select_one(sel)
@@ -519,7 +532,6 @@ def get_servicos_marcados(body: ServicosRequest):
                 if nome:
                     break
 
-        # ServiÃ§os agendados
         ta = soup.select_one("#txtEveVoluntario")
         raw = ta.get_text("\n", strip=True) if ta else ""
         servicos = _parse_servicos(raw)
@@ -544,6 +556,22 @@ def get_env_defaults():
         "connect_timeout":     _int("PROEIS_CONNECT_TIMEOUT"),
         "read_timeout":        _int("PROEIS_READ_TIMEOUT"),
         "filter_max_attempts": _int("FILTER_MAX_ATTEMPTS"),
+        "captcha_invalid_retries": _int("TWOCAPTCHA_INVALID_RETRIES"),
+        "captcha_refresh_after_invalids": _int("TWOCAPTCHA_REFRESH_AFTER_INVALIDS"),
+        "gemini_timeout": _int("GEMINI_TIMEOUT"),
+        "auto_retry_rounds": _int("PROEIS_AUTO_RETRY_ROUNDS"),
+        "auto_retry_wait_seconds": _int("PROEIS_AUTO_RETRY_WAIT_SECONDS"),
+        "system_defaults": {
+            "http_attempts": 2,
+            "connect_timeout": 8,
+            "read_timeout": 25,
+            "filter_max_attempts": 8,
+            "captcha_invalid_retries": 2,
+            "captcha_refresh_after_invalids": 1,
+            "gemini_timeout": 30,
+            "auto_retry_rounds": 0,
+            "auto_retry_wait_seconds": 300,
+        },
     }
 
 
@@ -585,7 +613,7 @@ def update_event(event_id: str, body: RunRequest):
         ref = _events_collection().document(event_id)
         current = ref.get()
         if not current.exists:
-            raise HTTPException(status_code=404, detail="Evento nÃ£o encontrado.")
+            raise HTTPException(status_code=404, detail="Evento nao encontrado.")
         data = _event_payload(body)
         data["created_at"] = (current.to_dict() or {}).get("created_at", datetime.now(timezone.utc).isoformat())
         ref.set(data)
@@ -634,22 +662,22 @@ async def run_automation(body: RunRequest):
         sys.stdout = cap
         sys.stderr = cap
         try:
-            print(f"[OP] OperaÃ§Ã£o iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
+            print(f"[OP] Operacao iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
             print(
                 "[OP] Alvo: "
                 f"nome={body.nome_evento or '-'} | hora={body.hora_evento or '-'} | "
                 f"tipo={body.disponivel or '-'} | endereco={body.endereco or '-'}"
             )
             if not login_val:
-                raise AutomationError("Login nÃ£o configurado. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("Login nao configurado. Va em Configuracoes.")
             if not password_val:
-                raise AutomationError("Senha nÃ£o configurada. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("Senha nao configurada. Va em Configuracoes.")
             if not gemini_key:
-                raise AutomationError("GEMINI_API_KEY nÃ£o configurada. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("GEMINI_API_KEY nao configurada. Va em Configuracoes.")
             if not body.convenio:
-                raise AutomationError("ConvÃªnio nÃ£o informado.")
+                raise AutomationError("Convenio nao informado.")
             if not body.cpa:
-                raise AutomationError("CPA nÃ£o informado.")
+                raise AutomationError("CPA nao informado.")
 
             with _env_lock:
                 _apply_runtime_options(body)
@@ -684,7 +712,7 @@ async def run_automation(body: RunRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
-            print(f"[OP] OperaÃ§Ã£o encerrada: status={result['status']} | log={log_path.name}")
+            print(f"[OP] Operacao encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "run", result["status"], log_lines, log_path.name, result)
             sys.stdout = old_out
             sys.stderr = old_err
@@ -710,7 +738,7 @@ async def run_automation(body: RunRequest):
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
-                        aviso = "[AVISO] OperaÃ§Ã£o excedeu 2 min sem resposta. Verifique conexÃ£o ou timeouts."
+                        aviso = "[AVISO] Operacao excedeu 2 min sem resposta. Verifique conexao ou timeouts."
                         yield _sse_data({"type": "log", "line": aviso})
                         break
                     yield ": keep-alive\n\n"
@@ -760,15 +788,15 @@ async def list_vagas(body: ListVagasRequest):
         try:
             print(f"[OP] Listagem iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_especifica or 'todas'}")
             if not login_val:
-                raise AutomationError("Login nÃ£o configurado. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("Login nao configurado. Va em Configuracoes.")
             if not password_val:
-                raise AutomationError("Senha nÃ£o configurada. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("Senha nao configurada. Va em Configuracoes.")
             if not gemini_key:
-                raise AutomationError("GEMINI_API_KEY nÃ£o configurada. VÃ¡ em ConfiguraÃ§Ãµes.")
+                raise AutomationError("GEMINI_API_KEY nao configurada. Va em Configuracoes.")
             if not body.convenio:
-                raise AutomationError("ConvÃªnio nÃ£o informado.")
+                raise AutomationError("Convenio nao informado.")
             if not body.cpa:
-                raise AutomationError("CPA nÃ£o informado.")
+                raise AutomationError("CPA nao informado.")
 
             with _env_lock:
                 _apply_runtime_options(body)
@@ -837,7 +865,7 @@ async def list_vagas(body: ListVagasRequest):
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
-                        aviso = "[AVISO] OperaÃ§Ã£o excedeu 2 min sem resposta. Verifique conexÃ£o ou timeouts."
+                        aviso = "[AVISO] Operacao excedeu 2 min sem resposta. Verifique conexao ou timeouts."
                         yield _sse_data({"type": "log", "line": aviso})
                         break
                     yield ": keep-alive\n\n"
@@ -857,7 +885,7 @@ async def list_vagas(body: ListVagasRequest):
 
 @app.get("/api/logs")
 def list_logs():
-    """Lista as 20 operaÃ§Ãµes mais recentes (arquivos de log)."""
+    """Lista as operacoes mais recentes."""
     stored = _firestore_logs()
     if stored:
         return {
@@ -918,14 +946,14 @@ def get_persisted_log(op_id: str):
 
 @app.get("/api/logs/{op_id}")
 def get_log(op_id: str):
-    """Retorna o conteÃºdo do arquivo de log de uma operaÃ§Ã£o."""
+    """Retorna o conteudo do arquivo de log de uma operacao."""
     if not re.match(r"^[a-f0-9]{8}$", op_id):
-        raise HTTPException(status_code=400, detail="op_id invÃ¡lido.")
+        raise HTTPException(status_code=400, detail="op_id invalido.")
     if not _LOGS_DIR.exists():
-        raise HTTPException(status_code=404, detail="Pasta de logs nÃ£o encontrada.")
+        raise HTTPException(status_code=404, detail="Pasta de logs nao encontrada.")
     matches = list(_LOGS_DIR.glob(f"*_{op_id}_*.log"))
     if not matches:
-        raise HTTPException(status_code=404, detail=f"Log '{op_id}' nÃ£o encontrado.")
+        raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
     log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
 
