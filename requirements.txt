@@ -1,4 +1,0 @@
-requests==2.32.5
-beautifulsoup4==4.14.2
-truststore==0.10.4
-2captcha-python>=2.0.0

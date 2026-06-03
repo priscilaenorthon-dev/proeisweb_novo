@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PROEIS Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            teal: { 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488' },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-60 shrink-0 bg-gray-900 flex flex-col border-r border-gray-800 h-screen">
+    <div class="p-5 border-b border-gray-800">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-teal-600 flex items-center justify-center text-lg">🤖</div>
+        <div>
+          <h1 class="font-bold text-white text-base leading-none">PROEIS Bot</h1>
+          <p class="text-xs text-gray-500 mt-0.5">Automação RJ</p>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1">
+      <button onclick="navigate('events')" id="nav-events" class="nav-item w-full">
+        <span class="text-base">📋</span><span>Eventos</span>
+      </button>
+      <button onclick="navigate('servicos')" id="nav-servicos" class="nav-item w-full">
+        <span class="text-base">📅</span><span>Serviços Marcados</span>
+      </button>
+      <button onclick="navigate('listar')" id="nav-listar" class="nav-item w-full">
+        <span class="text-base">🔍</span><span>Listar Vagas</span>
+      </button>
+      <button onclick="navigate('run')" id="nav-run" class="nav-item w-full">
+        <span class="text-base">▶️</span><span>Executar</span>
+      </button>
+      <button onclick="navigate('settings')" id="nav-settings" class="nav-item w-full">
+        <span class="text-base">⚙️</span><span>Configurações</span>
+      </button>
+    </nav>
+
+    <div class="p-4 border-t border-gray-800">
+      <div class="flex items-center gap-2 text-xs text-gray-500">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-600 shrink-0"></span>
+        <span id="status-text">Verificando API...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Conteúdo principal -->
+  <main class="flex-1 overflow-auto h-screen">
+    <div id="content" class="h-full"></div>
+  </main>
+
+  <!-- Modal overlay -->
+  <div id="modal-overlay" class="hidden fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+    <div id="modal-box" class="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl"></div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

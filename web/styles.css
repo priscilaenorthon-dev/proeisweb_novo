@@ -1,0 +1,287 @@
+/* ── Base ─────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+/* ── Sidebar nav ─────────────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #9ca3af;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+.nav-item:hover { background: #1f2937; color: #e5e7eb; }
+.nav-item.active { background: #0d4a42; color: #2dd4bf; font-weight: 600; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn-primary {
+  background: #0d9488;
+  color: #fff;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { background: #0f766e; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  background: transparent;
+  color: #9ca3af;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn-secondary:hover { background: #1f2937; color: #e5e7eb; border-color: #4b5563; }
+
+.btn-danger {
+  background: #7f1d1d;
+  color: #fca5a5;
+  font-weight: 600;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid #991b1b;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-danger:hover { background: #991b1b; }
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn-icon:hover { opacity: 1; background: #1f2937; }
+.btn-icon-red:hover { background: #450a0a; }
+
+/* ── Cards ───────────────────────────────────────────────── */
+.card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.event-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.event-card:hover { border-color: #374151; }
+
+/* ── Form controls ───────────────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.form-input,
+.form-select {
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #f3f4f6;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.form-input::placeholder { color: #4b5563; }
+.form-input:focus,
+.form-select:focus { border-color: #0d9488; box-shadow: 0 0 0 2px rgba(13,148,136,0.25); }
+.form-select option { background: #1f2937; }
+
+/* ── Terminal ────────────────────────────────────────────── */
+.terminal {
+  background: #030712;
+  border-radius: 7px;
+  padding: 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: #d1d5db;
+  min-height: 200px;
+}
+
+.log-line { word-break: break-all; }
+
+/* ── Result badges ───────────────────────────────────────── */
+.result-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 0.875rem;
+}
+
+.result-ok   { background: #052e16; border-color: #14532d; color: #86efac; }
+.result-warn { background: #451a03; border-color: #78350f; color: #fcd34d; }
+.result-err  { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+.result-info { background: #0c1a3a; border-color: #1e3a5f; color: #93c5fd; }
+
+/* ── Empty state ─────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 16px;
+  text-align: center;
+}
+
+/* ── Serviço card ────────────────────────────────────────── */
+.srv-card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+.srv-card:hover { border-color: #374151; }
+
+/* ── Mode toggle buttons ─────────────────────────────────── */
+.mode-btn {
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid #374151;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.mode-btn:hover { background: #1f2937; color: #e5e7eb; }
+.mode-btn-active {
+  background: #0d4a42;
+  color: #2dd4bf;
+  border-color: #0d9488;
+  font-weight: 600;
+}
+
+/* ── Vagas table ─────────────────────────────────────────── */
+.vagas-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.vagas-table thead tr {
+  background: #1f2937;
+  border-bottom: 1px solid #374151;
+}
+.vagas-table th {
+  text-align: left;
+  padding: 8px 12px;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.vagas-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1f2937;
+  color: #d1d5db;
+  vertical-align: top;
+}
+.vagas-table tbody tr:hover td { background: #1a2332; }
+.vagas-table tbody tr:last-child td { border-bottom: none; }
+
+/* ── Tipo badges (Titular / Reserva) ─────────────────────── */
+.badge-tipo {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.badge-tipo.titular { background: #052e16; color: #86efac; border: 1px solid #166534; }
+.badge-tipo.reserva { background: #431407; color: #fdba74; border: 1px solid #9a3412; }
+
+/* ── Vaga add button ─────────────────────────────────────── */
+.btn-vaga-add {
+  background: transparent;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.btn-vaga-add:hover {
+  opacity: 1;
+  background: #0d4a42;
+  border-color: #0d9488;
+}
+
+/* ── Toast notification ──────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #065f46;
+  color: #a7f3d0;
+  border: 1px solid #059669;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.toast.toast-show { opacity: 1; transform: translateY(0); }
+
+/* ── Checkbox style ──────────────────────────────────────── */
+input[type="checkbox"] {
+  accent-color: #0d9488;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}

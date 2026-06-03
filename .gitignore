@@ -1,6 +1,22 @@
+# Credenciais — NUNCA commitar
 .env
-logs/
-debug_html/
+
+# Ambiente virtual Python
+.venv/
+
+# Cache Python
 __pycache__/
 *.pyc
+*.pyo
+
+# Logs e debug
+logs/
+debug_html/
+
+# Arquivos de runtime/desktop
+eventos.json
 config/local_settings.json
+config/batch_events_runtime.json
+
+# Vercel
+.vercel/
