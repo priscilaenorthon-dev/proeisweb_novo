@@ -1093,9 +1093,15 @@ function logClass(line) {
   const lo = line.toLowerCase();
   if (lo.includes('erro') || lo.includes('falha') || lo.includes('error')) return 'text-red-400';
   if (lo.includes('confirmad') || lo.includes('marcad') || lo.includes('sucesso')) return 'text-green-400';
-  if (lo.includes('captcha')) return 'text-purple-400';
-  if (lo.includes('aviso') || lo.includes('warn')) return 'text-yellow-300';
+  if (lo.includes('[captcha]')) return 'text-purple-400';
+  if (lo.includes('[login]'))   return 'text-yellow-300';
+  if (lo.includes('[nav]'))     return 'text-blue-400';
+  if (lo.includes('[filtro]'))  return 'text-orange-400';
+  if (lo.includes('[http]'))    return 'text-gray-500';
+  if (lo.includes('[info]'))    return 'text-gray-400';
+  if (lo.includes('[form]'))    return 'text-sky-400';
   if (lo.includes('[vagas]') || lo.includes('vaga(s)')) return 'text-teal-400';
+  if (lo.includes('aviso') || lo.includes('warn') || lo.includes('[aviso]')) return 'text-yellow-300';
   return 'text-gray-300';
 }
 
