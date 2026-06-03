@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -65,6 +66,10 @@ class RunRequest(BaseModel):
 
 class SchedulerRunRequest(BaseModel):
     events: list[RunRequest] = []
+
+
+class EventListResponse(BaseModel):
+    events: list[dict[str, Any]]
 
 
 class ListVagasRequest(BaseModel):
@@ -201,6 +206,42 @@ def _scheduled_events_from_env() -> list[RunRequest]:
     return [RunRequest(**item) for item in data]
 
 
+def _firestore_db():
+    try:
+        from google.cloud import firestore
+    except ImportError as exc:
+        raise AutomationError("Dependência google-cloud-firestore não instalada.") from exc
+    database = os.getenv("FIRESTORE_DATABASE", "proeis")
+    return firestore.Client(database=database)
+
+
+def _events_collection():
+    return _firestore_db().collection(os.getenv("FIRESTORE_EVENTS_COLLECTION", "events"))
+
+
+def _event_payload(body: RunRequest) -> dict[str, Any]:
+    data = body.model_dump()
+    data["quantidade"] = int(data.get("quantidade") or 1)
+    data["scan_rounds"] = int(data.get("scan_rounds") or 1)
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return data
+
+
+def _doc_to_event(doc) -> dict[str, Any]:
+    data = doc.to_dict() or {}
+    data["id"] = doc.id
+    return data
+
+
+def _stored_events() -> list[dict[str, Any]]:
+    events = [_doc_to_event(doc) for doc in _events_collection().stream()]
+    return sorted(events, key=lambda item: item.get("created_at", ""))
+
+
+def _scheduled_events_from_firestore() -> list[RunRequest]:
+    return [RunRequest(**{k: v for k, v in item.items() if k != "id"}) for item in _stored_events()]
+
+
 class TestLoginRequest(BaseModel):
     login: str = ""
     password: str = ""
@@ -225,7 +266,9 @@ def scheduler_run(
         raise HTTPException(status_code=401, detail="Scheduler não autorizado.")
 
     try:
-        events = body.events if body and body.events else _scheduled_events_from_env()
+        events = body.events if body and body.events else _scheduled_events_from_firestore()
+        if not events:
+            events = _scheduled_events_from_env()
         if not events:
             raise AutomationError("Nenhum evento informado para o agendamento.")
 
@@ -372,6 +415,56 @@ def get_options():
     options_path = ROOT / "config" / "proeis_options.json"
     data = json.loads(options_path.read_text(encoding="utf-8"))
     return data
+
+
+@app.get("/api/events", response_model=EventListResponse)
+def list_events():
+    load_env_file()
+    try:
+        return {"events": _stored_events()}
+    except AutomationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/events")
+def create_event(body: RunRequest):
+    load_env_file()
+    try:
+        data = _event_payload(body)
+        now = datetime.now(timezone.utc).isoformat()
+        data["created_at"] = now
+        data["updated_at"] = now
+        ref = _events_collection().document()
+        ref.set(data)
+        return {"ok": True, "event": {"id": ref.id, **data}}
+    except AutomationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.put("/api/events/{event_id}")
+def update_event(event_id: str, body: RunRequest):
+    load_env_file()
+    try:
+        ref = _events_collection().document(event_id)
+        current = ref.get()
+        if not current.exists:
+            raise HTTPException(status_code=404, detail="Evento não encontrado.")
+        data = _event_payload(body)
+        data["created_at"] = (current.to_dict() or {}).get("created_at", datetime.now(timezone.utc).isoformat())
+        ref.set(data)
+        return {"ok": True, "event": {"id": event_id, **data}}
+    except AutomationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/events/{event_id}")
+def delete_event(event_id: str):
+    load_env_file()
+    try:
+        _events_collection().document(event_id).delete()
+        return {"ok": True}
+    except AutomationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/run")

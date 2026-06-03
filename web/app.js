@@ -6,6 +6,7 @@
 const state = {
   page: 'events',
   options: null,
+  events: null,
   envDefaults: null,
   scheduleTimer: null,
   scheduledAt: null,
@@ -28,11 +29,74 @@ const storage = {
   saveSettings(s) { localStorage.setItem('proeis_settings', JSON.stringify(s)); },
 };
 
+function localEventsFallback() {
+  try { return JSON.parse(localStorage.getItem('proeis_events') || '[]'); }
+  catch { return []; }
+}
+
+async function loadEvents(force = false) {
+  if (state.events && !force) return state.events;
+  try {
+    const data = await api.get('/api/events');
+    let events = data.events || [];
+    const local = localEventsFallback();
+    if (events.length === 0 && local.length > 0 && localStorage.getItem('proeis_events_migrated') !== '1') {
+      for (const ev of local) {
+        await api.send('/api/events', 'POST', ev);
+      }
+      localStorage.setItem('proeis_events_migrated', '1');
+      const migrated = await api.get('/api/events');
+      events = migrated.events || [];
+    }
+    state.events = events;
+    return events;
+  } catch {
+    state.events = localEventsFallback();
+    return state.events;
+  }
+}
+
+async function saveEventToServer(index, data) {
+  const events = await loadEvents();
+  const current = index !== null ? events[index] : null;
+  const method = current?.id ? 'PUT' : 'POST';
+  const url = current?.id ? `/api/events/${encodeURIComponent(current.id)}` : '/api/events';
+  const saved = await api.send(url, method, data);
+  if (saved.event) {
+    if (index !== null) events[index] = saved.event;
+    else events.push(saved.event);
+  }
+  state.events = events;
+  return saved.event;
+}
+
+async function deleteEventFromServer(index) {
+  const events = await loadEvents();
+  const current = events[index];
+  if (current?.id) {
+    await api.send(`/api/events/${encodeURIComponent(current.id)}`, 'DELETE');
+  }
+  events.splice(index, 1);
+  state.events = events;
+}
+
 // ── API helpers ────────────────────────────────────────────
 const api = {
   async get(url) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  },
+  async send(url, method, body = null) {
+    const r = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body === null ? undefined : JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      throw new Error(`HTTP ${r.status}: ${txt.slice(0, 200)}`);
+    }
     return r.json();
   },
   async *stream(url, body, signal) {
@@ -120,7 +184,7 @@ function badge(text, color) {
 // ── Events Page ────────────────────────────────────────────
 async function renderEventsPage() {
   const opts = await loadOptions();
-  const events = storage.getEvents();
+  const events = await loadEvents(true);
   const content = document.getElementById('content');
 
   content.innerHTML = `
@@ -359,7 +423,7 @@ function setEventType(type) {
 
 async function openEventModal(index, prefill = null, afterSave = null) {
   const opts = await loadOptions();
-  const events = storage.getEvents();
+  const events = await loadEvents();
   const ev = index !== null ? events[index] : (prefill || {});
   const isEdit = index !== null;
 
@@ -446,18 +510,20 @@ async function openEventModal(index, prefill = null, afterSave = null) {
   `;
   initEventModalControls();
 
-  document.getElementById('event-form').addEventListener('submit', e => {
+  document.getElementById('event-form').addEventListener('submit', async e => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
     data.quantidade = 1;
     data.scan_rounds = 1;
     data.turno = '';
-    const evs = storage.getEvents();
-    if (isEdit) evs[index] = data;
-    else evs.push(data);
-    storage.saveEvents(evs);
-    closeModal();
+    try {
+      await saveEventToServer(index, data);
+      closeModal();
+    } catch (err) {
+      alert(`Erro ao salvar evento: ${err.message}`);
+      return;
+    }
     if (afterSave) {
       afterSave();
     } else {
@@ -468,19 +534,21 @@ async function openEventModal(index, prefill = null, afterSave = null) {
   openModal();
 }
 
-function deleteEvent(index) {
+async function deleteEvent(index) {
   if (!confirm('Excluir este evento?')) return;
-  const evs = storage.getEvents();
-  evs.splice(index, 1);
-  storage.saveEvents(evs);
-  renderEventsPage();
+  try {
+    await deleteEventFromServer(index);
+    renderEventsPage();
+  } catch (err) {
+    alert(`Erro ao excluir evento: ${err.message}`);
+  }
 }
 
 // ── Run Page ───────────────────────────────────────────────
 let _logEl = null;
 
 async function renderRunPage() {
-  const events = storage.getEvents();
+  const events = await loadEvents(true);
   const content = document.getElementById('content');
 
   if (events.length === 0) {
@@ -632,7 +700,7 @@ async function renderListarPage() {
   _listLogEl = document.getElementById('list-log-el');
 
   // Pré-seleciona com o primeiro evento cadastrado, se houver
-  const evs = storage.getEvents();
+  const evs = await loadEvents();
   if (evs.length > 0) {
     const first = evs[0];
     const selConv = document.getElementById('lv-convenio');
@@ -902,7 +970,7 @@ function cancelScheduledAutomation() {
 // ── Executar ───────────────────────────────────────────────
 async function startRun() {
   const settings = storage.getSettings();
-  const allEvents = storage.getEvents();
+  const allEvents = await loadEvents();
   const selected = Array.from(document.querySelectorAll('.ev-cb:checked'))
     .map(cb => allEvents[parseInt(cb.dataset.i)])
     .flatMap(expandEventForRun);
