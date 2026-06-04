@@ -614,7 +614,8 @@ async function renderRunPage() {
 
 // ── Listar Vagas Page ──────────────────────────────────────
 let _listLogEl = null;
-let _vagasStore = []; // guarda vagas da sessão atual para referenciar por índice
+let _vagasStore = [];
+let _listarTab = 'log';
 
 async function renderListarPage() {
   const opts = await loadOptions();
@@ -626,9 +627,9 @@ async function renderListarPage() {
         <h2 class="text-2xl font-bold text-white">Listar Vagas</h2>
         <p class="text-gray-500 text-sm mt-1">Consulta todas as vagas disponíveis sem marcar</p>
       </div>
-      <div class="flex gap-5 flex-1">
+      <div class="flex gap-5 flex-1 listar-page-cols">
         <!-- Painel esquerdo -->
-        <div class="w-72 shrink-0 flex flex-col gap-4">
+        <div class="listar-left-panel w-72 shrink-0 flex flex-col gap-4">
           <div class="card">
             <span class="text-sm font-semibold text-white block mb-4">Filtros</span>
             <div class="space-y-4">
@@ -657,7 +658,12 @@ async function renderListarPage() {
           <button id="list-stop-btn" onclick="stopList()" class="btn-danger w-full hidden">⏹ Parar</button>
         </div>
         <!-- Painel direito -->
-        <div class="flex-1 flex flex-col gap-4 min-w-0 listar-workspace">
+        <div class="flex-1 min-w-0 flex flex-col">
+          <div class="listar-tab-bar">
+            <button id="tab-log" class="listar-tab active" onclick="switchListarTab('log')">📋 Log</button>
+            <button id="tab-vagas" class="listar-tab" onclick="switchListarTab('vagas')">📊 Vagas listadas <span id="tab-vagas-count" class="listar-tab-count"></span></button>
+          </div>
+          <div class="flex-1 flex flex-col gap-4 listar-workspace">
           <div class="card flex flex-col listar-log-card" style="min-height:200px; max-height:260px">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-semibold text-white">Log</span>
@@ -689,11 +695,13 @@ async function renderListarPage() {
               </table>
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
   `;
   _listLogEl = document.getElementById('list-log-el');
+  _listarTab = 'log';
 
   // Pré-seleciona com o primeiro evento cadastrado, se houver
   const evs = await loadEvents();
@@ -719,14 +727,36 @@ function _appendToLog(el, text, cls) {
 
 function appendListLog(text, cls = '') { _appendToLog(_listLogEl, text, cls); }
 
+function switchListarTab(tab) {
+  _listarTab = tab;
+  const logCard   = document.querySelector('.listar-log-card');
+  const vagasPanel = document.getElementById('vagas-el');
+  const tabLog    = document.getElementById('tab-log');
+  const tabVagas  = document.getElementById('tab-vagas');
+  if (tab === 'log') {
+    logCard?.classList.remove('listar-panel-hidden');
+    vagasPanel?.classList.add('listar-panel-hidden');
+    tabLog?.classList.add('active');
+    tabVagas?.classList.remove('active');
+  } else {
+    logCard?.classList.add('listar-panel-hidden');
+    vagasPanel?.classList.remove('listar-panel-hidden');
+    tabLog?.classList.remove('active');
+    tabVagas?.classList.add('active');
+  }
+}
+
 function clearListLog() {
   if (_listLogEl) _listLogEl.innerHTML = '<span class="text-gray-600">Log limpo.</span>';
   const v = document.getElementById('vagas-el');
-  if (v) v.classList.add('hidden');
+  if (v) { v.classList.add('hidden'); v.classList.remove('listar-panel-hidden'); }
   const vb = document.getElementById('vagas-body');
   if (vb) vb.innerHTML = '';
   const vc = document.getElementById('vagas-count');
   if (vc) vc.textContent = '';
+  const tvc = document.getElementById('tab-vagas-count');
+  if (tvc) tvc.textContent = '';
+  switchListarTab('log');
 }
 
 async function startListVagas() {
@@ -748,10 +778,13 @@ async function startListVagas() {
 
   if (_listLogEl) _listLogEl.innerHTML = '';
   _vagasStore = [];
+  switchListarTab('log');
+  const tabVagasCount = document.getElementById('tab-vagas-count');
+  if (tabVagasCount) tabVagasCount.textContent = '';
   const vagasEl   = document.getElementById('vagas-el');
   const vagasBody = document.getElementById('vagas-body');
   const vagasCount = document.getElementById('vagas-count');
-  if (vagasEl) { vagasEl.classList.add('hidden'); }
+  if (vagasEl) { vagasEl.classList.add('hidden'); vagasEl.classList.remove('listar-panel-hidden'); }
   if (vagasBody) vagasBody.innerHTML = '';
   let totalVagas = 0;
   let _currentTipo = 'nao-reserva'; // rastreia pelo stream de log
@@ -778,6 +811,8 @@ async function startListVagas() {
             const nomeEvento = vaga.nome || parsed.nome;
             const endEvento  = vaga.endereco || parsed.endereco;
             totalVagas++;
+            if (tabVagasCount) tabVagasCount.textContent = `(${totalVagas})`;
+            if (totalVagas === 1) switchListarTab('vagas');
             if (vagasBody) {
               const vagaIdx = _vagasStore.length;
               _vagasStore.push({ ...vaga, convenio, cpa, tipo: _currentTipo, hora });

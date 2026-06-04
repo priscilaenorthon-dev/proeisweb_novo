@@ -98,6 +98,26 @@ body {
 .btn-icon:hover { opacity: 1; background: #1f2937; }
 .btn-icon-red:hover { background: #450a0a; }
 
+/* ── Listar Vagas — tab bar ────────────────────────────────── */
+.listar-tab-bar { display: none; }
+.listar-tab {
+  flex: 1;
+  padding: 9px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  outline: none;
+}
+.listar-tab.active { color: #2dd4bf; border-bottom-color: #2dd4bf; }
+.listar-tab:not(.active):hover { color: #9ca3af; }
+.listar-tab-count { font-size: 0.75rem; opacity: 0.8; }
+
 /* ── Cards ───────────────────────────────────────────────── */
 .card {
   background: #111827;
@@ -765,29 +785,47 @@ input[type="checkbox"] {
     max-height: 200px;
   }
 
+  /* Listar Vagas — layout em coluna + abas no mobile */
+  .listar-page-cols { flex-direction: column; gap: 12px; }
+  .listar-left-panel { width: 100%; }
+
+  .listar-tab-bar {
+    display: flex;
+    border-bottom: 1px solid #374151;
+    background: #111827;
+    border-radius: 8px 8px 0 0;
+    border: 1px solid #374151;
+    border-bottom-color: #1f2937;
+  }
+
   .listar-workspace {
-    flex-direction: row !important;
-    overflow-x: auto;
-    gap: 12px;
-    padding-bottom: 8px;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
+    flex-direction: column !important;
+    overflow-x: visible;
+    scroll-snap-type: none;
+    padding-bottom: 0;
+    gap: 0;
+    border: 1px solid #374151;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: #111827;
+    padding: 12px;
   }
 
   .listar-log-card,
   .listar-vagas-panel {
-    flex: 0 0 calc(100vw - 28px);
-    min-width: calc(100vw - 28px);
-    scroll-snap-align: start;
+    flex: 1 1 auto;
+    min-width: 0;
+    scroll-snap-align: none;
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
   }
 
-  .listar-vagas-panel.hidden {
-    display: none !important;
-  }
+  .listar-log-card { max-height: none; min-height: 260px; }
+  .listar-vagas-panel .card { min-height: 260px; }
 
-  .listar-vagas-panel .card {
-    min-height: 260px;
-  }
+  .listar-panel-hidden { display: none !important; }
+  .listar-vagas-panel.hidden { display: none !important; }
 
   .card,
   .event-card,
