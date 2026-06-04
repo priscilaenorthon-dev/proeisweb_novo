@@ -1589,7 +1589,7 @@ class ProeisHTTP:
                 return True
             if nome_norm in label_norm:
                 return True
-            return _word_overlap_ratio(nome, min_len=3) >= 0.6
+            return _word_overlap_ratio(nome, min_len=5) >= 0.6
 
         def hora_matches(hora: str) -> bool:
             if not hora:
