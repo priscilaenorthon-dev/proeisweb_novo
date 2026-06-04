@@ -580,7 +580,7 @@ class ProeisHTTP:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
         primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
-        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.0-flash-lite")
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash-lite")
 
         if primary == secondary:
             result = self._solve_via_gemini_result(image, model=primary)
