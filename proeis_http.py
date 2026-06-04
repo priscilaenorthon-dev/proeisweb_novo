@@ -575,28 +575,68 @@ class ProeisHTTP:
             self.captcha_elapsed_seconds += time.monotonic() - t0
 
     def _solve_parallel_all_solvers(self, image: bytes) -> str:
-        """Resolve captcha usando Gemini."""
+        """Envia o captcha para dois modelos Gemini em paralelo; vence quem responder primeiro."""
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
-        result = self._solve_via_gemini_result(image)
-        text = normalize_captcha_answer(result.text)
-        self.last_captcha_id = result.captcha_id
-        _log("CAPTCHA", f"Vencedor: Gemini | resposta={text} | id={result.captcha_id}")
-        return text
+
+        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.0-flash")
+
+        if primary == secondary:
+            result = self._solve_via_gemini_result(image, model=primary)
+            text = normalize_captcha_answer(result.text)
+            self.last_captcha_id = result.captcha_id
+            _log("CAPTCHA", f"Vencedor: {primary} | resposta={text}")
+            return text
+
+        stop_event = threading.Event()
+        winner: list[CaptchaSubmission | None] = [None]
+        errors:  list[Exception] = []
+        lock = threading.Lock()
+
+        def run(model: str) -> None:
+            try:
+                result = self._solve_via_gemini_result(image, stop_event=stop_event, model=model)
+                with lock:
+                    if winner[0] is None:
+                        winner[0] = result
+                        stop_event.set()
+                        _log("CAPTCHA", f"Vencedor: {model} | resposta={normalize_captcha_answer(result.text)}")
+            except Exception as exc:
+                with lock:
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(target=run, args=(primary,),   daemon=True),
+            threading.Thread(target=run, args=(secondary,), daemon=True),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        if winner[0]:
+            text = normalize_captcha_answer(winner[0].text)
+            self.last_captcha_id = winner[0].captcha_id
+            return text
+
+        if errors:
+            raise errors[0]
+        raise AutomationError("Todos os solvers Gemini falharam sem retornar erro.")
 
     def _solve_via_gemini_result(
         self,
         image: bytes,
         stop_event: threading.Event | None = None,
+        model: str | None = None,
     ) -> CaptchaSubmission:
-        """Resolve captcha usando Gemini 2.5 Flash via visao computacional."""
+        """Resolve captcha usando Gemini via visao computacional."""
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         b64 = base64.b64encode(image).decode("ascii")
-        _log("CAPTCHA", "[Gemini] Enviando imagem para Gemini 2.5 Flash...")
-
-        model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         payload = {
             "contents": [{
