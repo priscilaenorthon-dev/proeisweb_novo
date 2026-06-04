@@ -443,6 +443,17 @@ def scheduler_run(
                     "hora_evento": event.hora_evento,
                 })
         ok = any(item.get("status") == "confirmado" for item in results)
+
+        op_id = str(uuid.uuid4())
+        _save_operation_log(
+            op_id=op_id,
+            kind="agendamento",
+            status="ok" if ok else "erro",
+            lines=[json.dumps(r, ensure_ascii=False) for r in results],
+            log_name=f"Scheduler — {len(events)} evento(s)",
+            result={"ok": ok, "total": len(results)},
+        )
+
         return {"ok": ok, "total": len(results), "results": results}
     except AutomationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
