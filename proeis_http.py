@@ -580,7 +580,7 @@ class ProeisHTTP:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
         primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
-        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.0-flash")
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-1.5-flash")
 
         if primary == secondary:
             result = self._solve_via_gemini_result(image, model=primary)
@@ -591,10 +591,11 @@ class ProeisHTTP:
 
         stop_event = threading.Event()
         winner: list[CaptchaSubmission | None] = [None]
-        errors:  list[Exception] = []
+        primary_error:   list[Exception] = []
+        secondary_errors: list[Exception] = []
         lock = threading.Lock()
 
-        def run(model: str) -> None:
+        def run(model: str, is_primary: bool) -> None:
             try:
                 result = self._solve_via_gemini_result(image, stop_event=stop_event, model=model)
                 with lock:
@@ -603,12 +604,20 @@ class ProeisHTTP:
                         stop_event.set()
                         _log("CAPTCHA", f"Vencedor: {model} | resposta={normalize_captcha_answer(result.text)}")
             except Exception as exc:
+                msg = str(exc)
+                # Modelo descontinuado pelo Google — ignorar silenciosamente
+                if "no longer available" in msg or "HTTP 404" in msg:
+                    _log("CAPTCHA", f"[{model}] Modelo indisponivel (ignorando): {msg[:80]}")
+                    return
                 with lock:
-                    errors.append(exc)
+                    if is_primary:
+                        primary_error.append(exc)
+                    else:
+                        secondary_errors.append(exc)
 
         threads = [
-            threading.Thread(target=run, args=(primary,),   daemon=True),
-            threading.Thread(target=run, args=(secondary,), daemon=True),
+            threading.Thread(target=run, args=(primary,   True),  daemon=True),
+            threading.Thread(target=run, args=(secondary, False), daemon=True),
         ]
         for t in threads:
             t.start()
@@ -620,8 +629,11 @@ class ProeisHTTP:
             self.last_captcha_id = winner[0].captcha_id
             return text
 
-        if errors:
-            raise errors[0]
+        # Propaga erro do modelo principal; ignora falhas do secundário
+        if primary_error:
+            raise primary_error[0]
+        if secondary_errors:
+            raise secondary_errors[0]
         raise AutomationError("Todos os solvers Gemini falharam sem retornar erro.")
 
     def _solve_via_gemini_result(
