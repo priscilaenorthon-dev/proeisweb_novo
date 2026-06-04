@@ -243,7 +243,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 _env_lock = threading.Lock()
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
-_LOGS_LIMIT = 50
+_LOGS_LIMIT = 200
 
 
 def _sse_data(item: dict[str, Any]) -> str:
@@ -895,9 +895,11 @@ async def list_vagas(body: ListVagasRequest):
 
 
 @app.get("/api/logs")
-def list_logs():
-    """Lista as operacoes mais recentes."""
+def list_logs(kind: str = ""):
+    """Lista as operacoes mais recentes. Filtro opcional: ?kind=agendamento|run|listar"""
     stored = _firestore_logs()
+    if kind:
+        stored = [item for item in stored if item.get("kind", "") == kind]
     if stored:
         return {
             "logs": [

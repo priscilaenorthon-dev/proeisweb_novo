@@ -963,7 +963,7 @@ class ProeisHTTP:
             payload["__EVENTARGUMENT"] = ""
             soup = self.post_form(payload)
 
-        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "8"))
+        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "4"))
         for attempt in range(1, max_filter_attempts + 1):
             _log("FILTRO", f"Preenchendo data='{data_evento}' e cpa='{cpa}' (tentativa {attempt}/{max_filter_attempts})...")
             payload = self.form_payload(soup)
@@ -989,7 +989,7 @@ class ProeisHTTP:
 
     def fill_filters_first_matching_date(self, convenio: str, cpa: str, prefer: str, scan_rounds: int = 1) -> str:
         _log("FILTRO", f"=== Varredura de datas: convenio='{convenio}' cpa='{cpa}' prefer='{prefer}' rounds={scan_rounds} ===")
-        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "8"))
+        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "4"))
         soup = self.require_soup()
         fields = self.find_fields(soup)
 
@@ -1139,7 +1139,7 @@ class ProeisHTTP:
 
     def list_all_available_dates(self, convenio: str, cpa: str) -> int:
         _log("VAGA", f"=== Listando vagas de todas as datas: convenio='{convenio}' cpa='{cpa}' ===")
-        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "8"))
+        max_filter_attempts = int(os.getenv("FILTER_MAX_ATTEMPTS", "4"))
         disponibilidade_runs = [
             ("reserva", True),
             ("nao-reserva", False),
