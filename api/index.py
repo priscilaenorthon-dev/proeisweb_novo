@@ -28,6 +28,7 @@ from proeis_http import (  # noqa: E402
     load_env_file,
     login_with_retries,
     reparar_mojibake,
+    first_scan_date_index,
 )
 
 app = FastAPI(title="PROEIS Bot API", version="1.0.0")
@@ -74,6 +75,7 @@ class RunRequest(BaseModel):
 
 class SchedulerRunRequest(BaseModel):
     events: list[RunRequest] = []
+    dry_run: bool = False
 
 
 class EventListResponse(BaseModel):
@@ -237,6 +239,59 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         "cpa": body.cpa,
         "data_evento": body.data_evento,
         "hora_evento": body.hora_evento,
+    }
+
+
+def _dry_run_event_once(body: RunRequest) -> dict[str, Any]:
+    """Simula o fluxo completo sem confirmar nenhuma vaga (dry-run)."""
+    _clean_request_text(body)
+    login_val    = body.login         or os.getenv("PROEIS_LOGIN", "")
+    password_val = body.password      or os.getenv("PROEIS_PASSWORD", "")
+    gemini_key   = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+    twocaptcha   = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
+
+    if not login_val:
+        raise AutomationError("Login nao configurado.")
+    if not password_val:
+        raise AutomationError("Senha nao configurada.")
+    if not gemini_key:
+        raise AutomationError("GEMINI_API_KEY nao configurada.")
+    if not body.convenio:
+        raise AutomationError("Convenio nao informado.")
+    if not body.cpa:
+        raise AutomationError("CPA nao informado.")
+
+    _apply_runtime_options(body)
+
+    client = ProeisHTTP(
+        login=login_val,
+        password=password_val,
+        twocaptcha_key=twocaptcha,
+        gemini_api_key=gemini_key,
+    )
+    login_with_retries(client, "Simulacao dry-run")
+    client.navigate_to_service_page()
+
+    dates = client.dates_for_convenio(body.convenio)
+    start_index = first_scan_date_index(dates, body.data_evento)
+    datas_para_checar = dates[start_index: start_index + 5]
+
+    vagas_por_data: list[dict[str, Any]] = []
+    for _, label in datas_para_checar:
+        client.navigate_to_service_page()
+        client.fill_filters(body.convenio, label, body.cpa, prefer=body.disponivel)
+        candidates = client.available_candidates(client.require_soup(), body.disponivel)
+        vagas_por_data.append({"data": label, "vagas_encontradas": len(candidates)})
+
+    total = sum(v["vagas_encontradas"] for v in vagas_por_data)
+    return {
+        "status": "simulado",
+        "convenio": body.convenio,
+        "cpa": body.cpa,
+        "datas_verificadas": len(vagas_por_data),
+        "total_vagas_encontradas": total,
+        "vagas_por_data": vagas_por_data,
+        "observacao": "Dry-run: login, captcha e varredura OK. Nenhuma vaga foi marcada.",
     }
 
 
@@ -420,6 +475,8 @@ def scheduler_run(
     if not secrets.compare_digest(x_scheduler_secret, expected_secret):
         raise HTTPException(status_code=401, detail="Scheduler nao autorizado.")
 
+    dry_run = body.dry_run if body else False
+
     try:
         events = body.events if body and body.events else _scheduled_events_from_firestore()
         if not events:
@@ -427,10 +484,13 @@ def scheduler_run(
         if not events:
             raise AutomationError("Nenhum evento informado para o agendamento.")
 
+        run_fn = _dry_run_event_once if dry_run else _run_event_once
+        kind   = "simulacao" if dry_run else "agendamento"
+
         results = []
         for index, event in enumerate(events, start=1):
             try:
-                result = _run_event_once(event)
+                result = run_fn(event)
                 results.append({"index": index, **result})
             except Exception as exc:
                 results.append({
@@ -442,8 +502,25 @@ def scheduler_run(
                     "data_evento": event.data_evento,
                     "hora_evento": event.hora_evento,
                 })
-        ok = any(item.get("status") == "confirmado" for item in results)
-        return {"ok": ok, "total": len(results), "results": results}
+
+        ok = any(
+            item.get("status") in ("confirmado", "simulado") for item in results
+        )
+        payload = {"ok": ok, "total": len(results), "dry_run": dry_run, "results": results}
+
+        # Salva no Firestore para consulta posterior no painel de Logs
+        op_id = str(uuid.uuid4())
+        status_log = "simulado" if dry_run else ("ok" if ok else "erro")
+        _save_operation_log(
+            op_id=op_id,
+            kind=kind,
+            status=status_log,
+            lines=[json.dumps(r, ensure_ascii=False) for r in results],
+            log_name=f"{'[SIMULAÇÃO] ' if dry_run else ''}Scheduler — {len(events)} evento(s)",
+            result={"ok": ok, "total": len(results), "dry_run": dry_run},
+        )
+
+        return payload
     except AutomationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
