@@ -311,7 +311,7 @@ class ProeisHTTP:
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
         _op_start()
-        _log("INFO", f"Solver ativo: {'Gemini 2.5 Flash' if gemini_api_key else 'nenhum'}")
+        _log("INFO", f"Solver ativo: {'Gemini 2.5 Flash-Lite' if gemini_api_key else 'nenhum'}")
 
     # â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -646,7 +646,7 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
         b64 = base64.b64encode(image).decode("ascii")
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
