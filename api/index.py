@@ -247,6 +247,49 @@ _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
 _LOGS_LIMIT = 200
 
+# Thread-local storage para captura por thread (evita mistura de logs em requisicoes concorrentes)
+_thread_local = threading.local()
+
+
+class _RoutingCapture:
+    """Thread-safe: encaminha writes para o _Capture do thread atual."""
+
+    def write(self, data: str) -> None:
+        cap = getattr(_thread_local, "capture", None)
+        if cap is not None:
+            cap.write(data)
+        else:
+            try:
+                sys.__stdout__.write(data)
+                sys.__stdout__.flush()
+            except Exception:
+                pass
+
+    def flush(self) -> None:
+        cap = getattr(_thread_local, "capture", None)
+        if cap is not None:
+            cap.flush()
+        else:
+            try:
+                sys.__stdout__.flush()
+            except Exception:
+                pass
+
+    def reconfigure(self, **_: Any) -> None:
+        pass
+
+    def fileno(self) -> int:
+        try:
+            return sys.__stdout__.fileno()
+        except Exception:
+            return -1
+
+
+# Instala o roteador uma vez; cada thread registra seu proprio _Capture via _thread_local.capture
+_routing_stdout = _RoutingCapture()
+sys.stdout = _routing_stdout
+sys.stderr = _routing_stdout
+
 
 def _sse_data(item: dict[str, Any]) -> str:
     return f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
@@ -753,15 +796,12 @@ async def run_automation(body: RunRequest):
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
     def _run() -> None:
-        old_out = sys.stdout
-        old_err = sys.stderr
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
-        sys.stdout = cap
-        sys.stderr = cap
+        _thread_local.capture = cap
         try:
             print(f"[OP] Operacao iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
             print(
@@ -817,8 +857,7 @@ async def run_automation(body: RunRequest):
         finally:
             print(f"[OP] Operacao encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "run", result["status"], log_lines, log_path.name, result)
-            sys.stdout = old_out
-            sys.stderr = old_err
+            _thread_local.capture = None
             try:
                 log_file.close()
             except Exception:
@@ -879,15 +918,12 @@ async def list_vagas(body: ListVagasRequest):
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
     def _run() -> None:
-        old_out = sys.stdout
-        old_err = sys.stderr
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_listar.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
-        sys.stdout = cap
-        sys.stderr = cap
+        _thread_local.capture = cap
         try:
             print(f"[OP] Listagem iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_especifica or 'todas'}")
             if not login_val:
@@ -946,8 +982,7 @@ async def list_vagas(body: ListVagasRequest):
         finally:
             print(f"[OP] Listagem encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "listar", result["status"], log_lines, log_path.name, result)
-            sys.stdout = old_out
-            sys.stderr = old_err
+            _thread_local.capture = None
             try:
                 log_file.close()
             except Exception:
