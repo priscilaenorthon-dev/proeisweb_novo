@@ -1565,6 +1565,37 @@ async function logoutSession() {
 }
 
 // ── API status ─────────────────────────────────────────────
+function _applySessionStatus(sess) {
+  const userInfo = document.getElementById('user-info');
+  const dot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  if (sess && sess.logged_in) {
+    document.getElementById('user-name-display').textContent = sess.user_name || 'Logado';
+    userInfo?.classList.remove('hidden');
+    userInfo?.classList.add('flex');
+    // Atualiza o status dot para refletir login completo
+    if (dot) dot.className = 'w-2 h-2 rounded-full bg-green-400 shrink-0';
+    if (statusText) statusText.textContent = 'API online';
+  } else {
+    userInfo?.classList.add('hidden');
+    userInfo?.classList.remove('flex');
+  }
+}
+
+let _sessionPollTimer = null;
+
+async function _pollSessionUntilLoggedIn(attempts = 0) {
+  if (attempts >= 12) return; // desiste apos ~24s
+  try {
+    const sess = await api.get('/api/session-status');
+    if (sess && sess.logged_in) {
+      _applySessionStatus(sess);
+      return;
+    }
+  } catch { /* ignora */ }
+  _sessionPollTimer = setTimeout(() => _pollSessionUntilLoggedIn(attempts + 1), 2000);
+}
+
 async function checkApiStatus() {
   try {
     await api.get('/api/health');
@@ -1576,14 +1607,12 @@ async function checkApiStatus() {
   }
   try {
     const sess = await api.get('/api/session-status');
-    const userInfo = document.getElementById('user-info');
     if (sess && sess.logged_in) {
-      document.getElementById('user-name-display').textContent = sess.user_name || 'Logado';
-      userInfo?.classList.remove('hidden');
-      userInfo?.classList.add('flex');
+      _applySessionStatus(sess);
     } else {
-      userInfo?.classList.add('hidden');
-      userInfo?.classList.remove('flex');
+      // Sessao ainda nao pronta (warmup em andamento): polling ate o nome aparecer
+      if (_sessionPollTimer) clearTimeout(_sessionPollTimer);
+      _pollSessionUntilLoggedIn(0);
     }
   } catch { /* session status nao critico */ }
 }

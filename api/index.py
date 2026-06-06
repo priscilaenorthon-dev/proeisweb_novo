@@ -217,6 +217,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         twocaptcha_key=twocaptcha,
         gemini_api_key=gemini_key,
     )
+    _warmup_event.wait(timeout=30)
     if not _try_restore_session(client):
         login_with_retries(client, "Login via agendamento Cloud Scheduler")
         _fetch_user_name_and_save(client)
@@ -245,6 +246,8 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 _env_lock = threading.Lock()
 _warmup_lock = threading.Lock()
 _warmup_in_progress = False
+_warmup_event = threading.Event()
+_warmup_event.set()  # começa "livre" (nenhum warmup em andamento)
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
 _LOGS_LIMIT = 200
@@ -831,6 +834,9 @@ async def run_automation(body: RunRequest):
                     gemini_api_key=gemini_key,
                 )
 
+            # Aguarda warmup de background (abertura do painel) antes de verificar sessao.
+            # Evita login duplicado caso o usuario clique antes do warmup terminar.
+            _warmup_event.wait(timeout=30)
             if not _try_restore_session(client):
                 login_with_retries(client, "Login via painel web")
                 _fetch_user_name_and_save(client)
@@ -948,6 +954,8 @@ async def list_vagas(body: ListVagasRequest):
                     gemini_api_key=gemini_key,
                 )
 
+            # Aguarda warmup de background antes de verificar sessao.
+            _warmup_event.wait(timeout=30)
             if not _try_restore_session(client):
                 login_with_retries(client, "Login via painel web (listagem)")
                 _fetch_user_name_and_save(client)
@@ -1104,7 +1112,7 @@ def get_log(op_id: str):
 
 def _trigger_warmup_login() -> None:
     """Dispara login em background se nao houver sessao valida e credenciais estiverem configuradas.
-    Evita logins redundantes com _warmup_lock."""
+    Usa _warmup_lock para evitar logins redundantes e _warmup_event para sincronizar com run/listar."""
     global _warmup_in_progress
     login_val = os.getenv("PROEIS_LOGIN", "")
     password_val = os.getenv("PROEIS_PASSWORD", "")
@@ -1115,6 +1123,7 @@ def _trigger_warmup_login() -> None:
         if _warmup_in_progress:
             return
         _warmup_in_progress = True
+        _warmup_event.clear()  # sinaliza "login em andamento"
 
     def _do_warmup() -> None:
         global _warmup_in_progress
@@ -1131,9 +1140,9 @@ def _trigger_warmup_login() -> None:
         except Exception:
             pass
         finally:
-            global _warmup_in_progress
             with _warmup_lock:
                 _warmup_in_progress = False
+            _warmup_event.set()  # sinaliza "login concluido (ou falhou)"
 
     threading.Thread(target=_do_warmup, daemon=True).start()
 
