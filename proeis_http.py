@@ -1132,6 +1132,11 @@ class ProeisHTTP:
         self.navigate_to_service_page()
         dates = self.dates_for_convenio(convenio)
         print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
+        # Apos dates_for_convenio() o soup fica num estado de postback parcial
+        # (__EVENTTARGET=ddlConvenios). Se reutilizado diretamente em fill_filters,
+        # o VIEWSTATE nao e valido para submissao com captcha e o site rejeita o captcha.
+        # Resetar a soup forca navigate_to_service_page() a navegar de forma completa.
+        self.soup = None
 
         confirmed = 0
         scan_rounds = coerce_scan_rounds(scan_rounds)
