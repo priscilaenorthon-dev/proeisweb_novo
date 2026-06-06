@@ -1517,6 +1517,15 @@ async function renderPage() {
   }
 }
 
+// ── Session / logout ───────────────────────────────────────
+async function logoutSession() {
+  try { await api.post('/api/session-logout', {}); } catch { /* ignore */ }
+  const userInfo = document.getElementById('user-info');
+  userInfo?.classList.add('hidden');
+  userInfo?.classList.remove('flex');
+  document.getElementById('user-name-display').textContent = '';
+}
+
 // ── API status ─────────────────────────────────────────────
 async function checkApiStatus() {
   try {
@@ -1527,6 +1536,18 @@ async function checkApiStatus() {
     document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-red-400 shrink-0';
     document.getElementById('status-text').textContent = 'API offline';
   }
+  try {
+    const sess = await api.get('/api/session-status');
+    const userInfo = document.getElementById('user-info');
+    if (sess && sess.logged_in) {
+      document.getElementById('user-name-display').textContent = sess.user_name || 'Logado';
+      userInfo?.classList.remove('hidden');
+      userInfo?.classList.add('flex');
+    } else {
+      userInfo?.classList.add('hidden');
+      userInfo?.classList.remove('flex');
+    }
+  } catch { /* session status nao critico */ }
 }
 
 // ── Init ───────────────────────────────────────────────────

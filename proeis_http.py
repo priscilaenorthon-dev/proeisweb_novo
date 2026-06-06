@@ -331,6 +331,30 @@ class ProeisHTTP:
         self.last_url = DEFAULT_URL
         self.soup = None
 
+    def check_auth(self) -> bool:
+        """Verifica se a sessao atual esta autenticada via GET rapido ao menu."""
+        t0 = time.monotonic()
+        try:
+            response = self.session.request(
+                "GET", MENU_URL,
+                timeout=(int(os.getenv("PROEIS_CONNECT_TIMEOUT", "8")), 10),
+                allow_redirects=True,
+            )
+            self.site_elapsed_seconds += time.monotonic() - t0
+            text = response.text
+            final_url = response.url
+            if "Default.aspx" in final_url or "txtSenha" in text or "btnEntrar" in text:
+                _log("SESSION", "Sessao expirada (redirecionado para login).")
+                return False
+            self.soup = BeautifulSoup(text, "html.parser")
+            self.last_url = final_url
+            _log("SESSION", "Sessao ativa confirmada.")
+            return True
+        except Exception as exc:
+            self.site_elapsed_seconds += time.monotonic() - t0
+            _log("SESSION", f"Erro ao verificar sessao: {exc}")
+            return False
+
     def request(self, method: str, url: str, **kwargs) -> BeautifulSoup:
         last_error: Exception | None = None
         max_attempts = int(os.getenv("PROEIS_HTTP_ATTEMPTS", "2"))

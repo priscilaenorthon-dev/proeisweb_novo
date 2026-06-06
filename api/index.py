@@ -217,7 +217,9 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         twocaptcha_key=twocaptcha,
         gemini_api_key=gemini_key,
     )
-    login_with_retries(client, "Login via agendamento Cloud Scheduler")
+    if not _try_restore_session(client):
+        login_with_retries(client, "Login via agendamento Cloud Scheduler")
+        _fetch_user_name_and_save(client)
     confirmed = client.mark_scanning_dates(
         body.convenio,
         body.cpa,
@@ -325,6 +327,97 @@ def _events_collection():
 
 def _logs_collection():
     return _firestore_db().collection(os.getenv("FIRESTORE_LOGS_COLLECTION", "operation_logs"))
+
+
+def _session_collection():
+    return _firestore_db().collection(
+        os.getenv("FIRESTORE_SESSION_COLLECTION", "proeis_session")
+    )
+
+
+def _save_session(client: ProeisHTTP, user_name: str) -> None:
+    """Salva cookies e nome do usuario no Firestore para reutilizacao na proxima operacao."""
+    try:
+        _session_collection().document("current").set({
+            "cookies": dict(client.session.cookies),
+            "user_name": user_name,
+            "login": client.login,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"[SESSION] Sessao salva (usuario: {user_name or client.login}).")
+    except Exception as exc:
+        print(f"[SESSION] Aviso: nao foi possivel salvar sessao: {exc}")
+
+
+def _load_session(client: ProeisHTTP) -> dict:
+    """Carrega cookies do Firestore para client.session. Retorna {valid, user_name}."""
+    try:
+        doc = _session_collection().document("current").get()
+        if not doc.exists:
+            return {"valid": False, "user_name": ""}
+        data = doc.to_dict() or {}
+        if data.get("login", "") != client.login:
+            return {"valid": False, "user_name": ""}
+        saved_at_str = data.get("saved_at", "")
+        if saved_at_str:
+            try:
+                saved_at = datetime.fromisoformat(saved_at_str)
+                if saved_at.tzinfo is None:
+                    saved_at = saved_at.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - saved_at).total_seconds()
+                if age > 14400:
+                    print(f"[SESSION] Sessao expirada por tempo ({int(age / 3600)}h). Novo login necessario.")
+                    return {"valid": False, "user_name": ""}
+            except Exception:
+                pass
+        for name, value in (data.get("cookies") or {}).items():
+            client.session.cookies.set(name, value)
+        return {"valid": True, "user_name": data.get("user_name", "")}
+    except Exception as exc:
+        print(f"[SESSION] Erro ao carregar sessao: {exc}")
+        return {"valid": False, "user_name": ""}
+
+
+def _try_restore_session(client: ProeisHTTP) -> bool:
+    """Carrega cookies e verifica se sessao ainda e valida. True = login nao necessario."""
+    result = _load_session(client)
+    if not result["valid"]:
+        return False
+    try:
+        if client.check_auth():
+            user = result["user_name"] or client.login
+            print(f"[SESSION] Sessao restaurada para '{user}' (login ignorado).")
+            return True
+        print("[SESSION] Cookies carregados mas sessao invalida no servidor.")
+        return False
+    except Exception as exc:
+        print(f"[SESSION] Erro ao validar sessao restaurada: {exc}")
+        return False
+
+
+def _fetch_user_name_and_save(client: ProeisHTTP) -> None:
+    """Apos login novo: busca nome do usuario no menu e persiste sessao no Firestore."""
+    try:
+        soup = client.request("GET", MENU_URL)
+        nome = ""
+        for sel in ["#lblNomeVoluntario", "#lblNome", "#lblUsuario",
+                    "[id*='lblNome']", "[id*='lblUsuario']"]:
+            el = soup.select_one(sel)
+            if el:
+                nome = el.get_text(strip=True)
+                if nome:
+                    break
+        if not nome:
+            txt = soup.get_text(" ", strip=True)
+            m = re.search(
+                r"(?:bem[- ]?vindo|ol[aá])[,:]?\s+([A-ZÀ-Ú][A-Za-zÀ-ú\s]{2,40})",
+                txt, re.IGNORECASE,
+            )
+            if m:
+                nome = m.group(1).strip()
+        _save_session(client, nome)
+    except Exception as exc:
+        print(f"[SESSION] Aviso: nao salvou sessao apos login: {exc}")
 
 
 def _event_payload(body: RunRequest) -> dict[str, Any]:
@@ -532,8 +625,15 @@ def get_servicos_marcados(body: ServicosRequest):
             login=login_val, password=pwd_val,
             twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
         )
-        login_with_retries(client, "Buscar servicos marcados")
-        soup = client.request("GET", MENU_URL)
+        session_restored = _try_restore_session(client)
+        if not session_restored:
+            login_with_retries(client, "Buscar servicos marcados")
+
+        # Se sessao foi restaurada, soup ja e o menu (do check_auth). Senao, busca agora.
+        if session_restored and client.soup is not None:
+            soup = client.soup
+        else:
+            soup = client.request("GET", MENU_URL)
 
         nome = ""
         for sel in ["#lblNomeVoluntario", "#lblNome", "[id*='lblNome']"]:
@@ -542,6 +642,8 @@ def get_servicos_marcados(body: ServicosRequest):
                 nome = el.get_text(strip=True)
                 if nome:
                     break
+
+        _save_session(client, nome)
 
         ta = soup.select_one("#txtEveVoluntario")
         raw = ta.get_text("\n", strip=True) if ta else ""
@@ -699,7 +801,9 @@ async def run_automation(body: RunRequest):
                     gemini_api_key=gemini_key,
                 )
 
-            login_with_retries(client, "Login via painel web")
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via painel web")
+                _fetch_user_name_and_save(client)
 
             confirmed = client.mark_scanning_dates(
                 body.convenio,
@@ -818,7 +922,9 @@ async def list_vagas(body: ListVagasRequest):
                     gemini_api_key=gemini_key,
                 )
 
-            login_with_retries(client, "Login via painel web (listagem)")
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via painel web (listagem)")
+                _fetch_user_name_and_save(client)
             client.navigate_to_service_page()
 
             if body.data_especifica:
@@ -969,6 +1075,41 @@ def get_log(op_id: str):
         raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
     log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
+
+
+@app.get("/api/session-status")
+def session_status():
+    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}."""
+    load_env_file()
+    try:
+        doc = _session_collection().document("current").get()
+        if not doc.exists:
+            return {"logged_in": False, "user_name": "", "saved_at": ""}
+        data = doc.to_dict() or {}
+        saved_at_str = data.get("saved_at", "")
+        if saved_at_str:
+            try:
+                saved_at = datetime.fromisoformat(saved_at_str)
+                if saved_at.tzinfo is None:
+                    saved_at = saved_at.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - saved_at).total_seconds() > 14400:
+                    return {"logged_in": False, "user_name": "", "saved_at": saved_at_str}
+            except Exception:
+                pass
+        return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
+    except Exception:
+        return {"logged_in": False, "user_name": "", "saved_at": ""}
+
+
+@app.post("/api/session-logout")
+def session_logout():
+    """Apaga a sessao persistida do Firestore, forcando novo login na proxima operacao."""
+    load_env_file()
+    try:
+        _session_collection().document("current").delete()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 from starlette.staticfiles import StaticFiles
