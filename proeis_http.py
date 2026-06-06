@@ -1021,6 +1021,10 @@ class ProeisHTTP:
             if "erro ao confirmar imagem" in norm(str(soup)):
                 _log("FILTRO", f"Captcha de filtro recusado pelo site (tentativa {attempt}/{max_filter_attempts}); tentando novamente...")
                 self.report_bad_captcha()
+                refreshed = self.refresh_page_captcha(soup)
+                if refreshed is not None:
+                    soup = refreshed
+                    _log("CAPTCHA", "Nova imagem de captcha obtida apos rejeicao do filtro.")
                 continue
             _log("FILTRO", "Filtros aplicados com sucesso.")
             return
