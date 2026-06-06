@@ -243,6 +243,8 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 
 
 _env_lock = threading.Lock()
+_warmup_lock = threading.Lock()
+_warmup_in_progress = False
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
 _LOGS_LIMIT = 200
@@ -1100,16 +1102,64 @@ def get_log(op_id: str):
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
 
 
+def _trigger_warmup_login() -> None:
+    """Dispara login em background se nao houver sessao valida e credenciais estiverem configuradas.
+    Evita logins redundantes com _warmup_lock."""
+    global _warmup_in_progress
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not (login_val and password_val and gemini_key):
+        return
+    with _warmup_lock:
+        if _warmup_in_progress:
+            return
+        _warmup_in_progress = True
+
+    def _do_warmup() -> None:
+        global _warmup_in_progress
+        try:
+            client = ProeisHTTP(
+                login=login_val,
+                password=password_val,
+                twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+                gemini_api_key=gemini_key,
+            )
+            if not _try_restore_session(client):
+                login_with_retries(client, "Warmup automatico (abertura do painel)")
+                _fetch_user_name_and_save(client)
+        except Exception:
+            pass
+        finally:
+            global _warmup_in_progress
+            with _warmup_lock:
+                _warmup_in_progress = False
+
+    threading.Thread(target=_do_warmup, daemon=True).start()
+
+
 @app.get("/api/session-status")
 def session_status():
-    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}."""
+    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}.
+    Se nao houver sessao valida, dispara login em background para pre-aquecer."""
     load_env_file()
     try:
         doc = _session_collection().document("current").get()
         if not doc.exists:
+            _trigger_warmup_login()
             return {"logged_in": False, "user_name": "", "saved_at": ""}
         data = doc.to_dict() or {}
-        saved_at_str = data.get("saved_at", "")
+        saved_at = data.get("saved_at")
+        # Verifica se sessao ainda esta dentro do TTL de 4h
+        if saved_at:
+            try:
+                age_s = (datetime.utcnow() - saved_at.replace(tzinfo=None)).total_seconds()
+                if age_s >= 14400:
+                    _trigger_warmup_login()
+                    return {"logged_in": False, "user_name": "", "saved_at": ""}
+            except Exception:
+                pass
+        saved_at_str = str(saved_at) if saved_at else ""
         return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
     except Exception:
         return {"logged_in": False, "user_name": "", "saved_at": ""}
