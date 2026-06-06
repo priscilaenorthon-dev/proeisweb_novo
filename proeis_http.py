@@ -332,11 +332,17 @@ class ProeisHTTP:
         self.soup = None
 
     def check_auth(self) -> bool:
-        """Verifica se a sessao atual esta autenticada via GET rapido ao menu."""
+        """Verifica se a sessao atual esta autenticada.
+
+        Tenta ir direto para a tela de servicos (ASSOCIAR_URL). Se o PROEIS
+        carregar diretamente, navigate_to_service_page() vira no-op e economiza
+        ~0.4s de navegacao. Se redirecionar para o menu, comportamento identico
+        ao anterior (sem regressao).
+        """
         t0 = time.monotonic()
         try:
             response = self.session.request(
-                "GET", MENU_URL,
+                "GET", ASSOCIAR_URL,
                 timeout=(int(os.getenv("PROEIS_CONNECT_TIMEOUT", "8")), 10),
                 allow_redirects=True,
             )
@@ -348,7 +354,10 @@ class ProeisHTTP:
                 return False
             self.soup = BeautifulSoup(text, "html.parser")
             self.last_url = final_url
-            _log("SESSION", "Sessao ativa confirmada.")
+            if self.has_service_fields(self.soup):
+                _log("SESSION", "Sessao ativa — tela de servicos carregada diretamente (navegacao pulada).")
+            else:
+                _log("SESSION", "Sessao ativa — redirecionado ao menu (navegacao normal).")
             return True
         except Exception as exc:
             self.site_elapsed_seconds += time.monotonic() - t0
@@ -1529,7 +1538,16 @@ class ProeisHTTP:
         endereco: str = "",
     ) -> bool:
         soup = self.require_soup()
-        candidates = self.available_candidates(soup, prefer)
+        prefer_norm = norm(prefer)
+        should_try_fallback = prefer_norm in {"nao-reserva", "sem-reserva", "normal"}
+
+        # Carrega todos os candidatos uma unica vez; evita parse duplo da mesma pagina
+        all_candidates = self.available_candidates(soup, "qualquer")
+        candidates = (
+            [c for c in all_candidates if self.matches_preference(norm(c.label), prefer_norm)]
+            if should_try_fallback
+            else all_candidates
+        )
         prefer_used = prefer
         filters = {"nome": nome_evento, "hora": hora_evento, "turno": turno, "endereco": endereco}
         active_filters = {k: v for k, v in filters.items() if v}
@@ -1539,13 +1557,10 @@ class ProeisHTTP:
             if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
         ]
 
-        prefer_norm = norm(prefer)
-        should_try_fallback = prefer_norm in {"nao-reserva", "sem-reserva", "normal"}
         if not filtered and should_try_fallback:
-            any_candidates = self.available_candidates(soup, "qualquer")
             any_filtered = [
                 candidate
-                for candidate in any_candidates
+                for candidate in all_candidates
                 if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
             ]
             if any_filtered:
@@ -1554,7 +1569,7 @@ class ProeisHTTP:
                     "Fallback de disponibilidade: nao encontrei linha exata em 'nao-reserva'; "
                     "continuando com candidatos de 'qualquer' para nao perder vaga compativel.",
                 )
-                candidates = any_candidates
+                candidates = all_candidates
                 filtered = any_filtered
                 prefer_used = "qualquer"
 
