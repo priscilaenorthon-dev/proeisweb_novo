@@ -826,7 +826,12 @@ class ProeisHTTP:
     def _try_navigate_to_service_page(self) -> bool:
         _phase("FASE 2/4: NAVEGAÇÃO")
         _log("NAV", f"Acessando menu e navegando para tela de serviços ({MENU_URL.split('/')[-1]})...")
-        soup = self.request("GET", MENU_URL)
+        menu_filename = MENU_URL.split("/")[-1]
+        if self.soup is not None and self.last_url and menu_filename in self.last_url:
+            _log("NAV", "Reutilizando pagina do menu ja carregada (sem nova requisicao).")
+            soup = self.soup
+        else:
+            soup = self.request("GET", MENU_URL)
 
         if soup.select_one("#btnEscala") or "btnEscala" in str(soup):
             _log("NAV", "Botao 'Escala' encontrado. Clicando via postback...")
