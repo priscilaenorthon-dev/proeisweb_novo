@@ -217,6 +217,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         twocaptcha_key=twocaptcha,
         gemini_api_key=gemini_key,
     )
+    _warmup_event.wait(timeout=30)
     if not _try_restore_session(client):
         login_with_retries(client, "Login via agendamento Cloud Scheduler")
         _fetch_user_name_and_save(client)
@@ -243,9 +244,56 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 
 
 _env_lock = threading.Lock()
+_warmup_lock = threading.Lock()
+_warmup_in_progress = False
+_warmup_event = threading.Event()
+_warmup_event.set()  # começa "livre" (nenhum warmup em andamento)
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
 _LOGS_LIMIT = 200
+
+# Thread-local storage para captura por thread (evita mistura de logs em requisicoes concorrentes)
+_thread_local = threading.local()
+
+
+class _RoutingCapture:
+    """Thread-safe: encaminha writes para o _Capture do thread atual."""
+
+    def write(self, data: str) -> None:
+        cap = getattr(_thread_local, "capture", None)
+        if cap is not None:
+            cap.write(data)
+        else:
+            try:
+                sys.__stdout__.write(data)
+                sys.__stdout__.flush()
+            except Exception:
+                pass
+
+    def flush(self) -> None:
+        cap = getattr(_thread_local, "capture", None)
+        if cap is not None:
+            cap.flush()
+        else:
+            try:
+                sys.__stdout__.flush()
+            except Exception:
+                pass
+
+    def reconfigure(self, **_: Any) -> None:
+        pass
+
+    def fileno(self) -> int:
+        try:
+            return sys.__stdout__.fileno()
+        except Exception:
+            return -1
+
+
+# Instala o roteador uma vez; cada thread registra seu proprio _Capture via _thread_local.capture
+_routing_stdout = _RoutingCapture()
+sys.stdout = _routing_stdout
+sys.stderr = _routing_stdout
 
 
 def _sse_data(item: dict[str, Any]) -> str:
@@ -753,15 +801,12 @@ async def run_automation(body: RunRequest):
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
     def _run() -> None:
-        old_out = sys.stdout
-        old_err = sys.stderr
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
-        sys.stdout = cap
-        sys.stderr = cap
+        _thread_local.capture = cap
         try:
             print(f"[OP] Operacao iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
             print(
@@ -789,6 +834,9 @@ async def run_automation(body: RunRequest):
                     gemini_api_key=gemini_key,
                 )
 
+            # Aguarda warmup de background (abertura do painel) antes de verificar sessao.
+            # Evita login duplicado caso o usuario clique antes do warmup terminar.
+            _warmup_event.wait(timeout=30)
             if not _try_restore_session(client):
                 login_with_retries(client, "Login via painel web")
                 _fetch_user_name_and_save(client)
@@ -817,8 +865,7 @@ async def run_automation(body: RunRequest):
         finally:
             print(f"[OP] Operacao encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "run", result["status"], log_lines, log_path.name, result)
-            sys.stdout = old_out
-            sys.stderr = old_err
+            _thread_local.capture = None
             try:
                 log_file.close()
             except Exception:
@@ -879,15 +926,12 @@ async def list_vagas(body: ListVagasRequest):
         loop.call_soon_threadsafe(aqueue.put_nowait, msg)
 
     def _run() -> None:
-        old_out = sys.stdout
-        old_err = sys.stderr
         _LOGS_DIR.mkdir(exist_ok=True)
         log_path = _LOGS_DIR / f"{ts_str}_{op_id}_listar.log"
         log_file = open(log_path, "w", encoding="utf-8", buffering=1)
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
-        sys.stdout = cap
-        sys.stderr = cap
+        _thread_local.capture = cap
         try:
             print(f"[OP] Listagem iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_especifica or 'todas'}")
             if not login_val:
@@ -910,6 +954,8 @@ async def list_vagas(body: ListVagasRequest):
                     gemini_api_key=gemini_key,
                 )
 
+            # Aguarda warmup de background antes de verificar sessao.
+            _warmup_event.wait(timeout=30)
             if not _try_restore_session(client):
                 login_with_retries(client, "Login via painel web (listagem)")
                 _fetch_user_name_and_save(client)
@@ -946,8 +992,7 @@ async def list_vagas(body: ListVagasRequest):
         finally:
             print(f"[OP] Listagem encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "listar", result["status"], log_lines, log_path.name, result)
-            sys.stdout = old_out
-            sys.stderr = old_err
+            _thread_local.capture = None
             try:
                 log_file.close()
             except Exception:
@@ -1065,16 +1110,65 @@ def get_log(op_id: str):
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
 
 
+def _trigger_warmup_login() -> None:
+    """Dispara login em background se nao houver sessao valida e credenciais estiverem configuradas.
+    Usa _warmup_lock para evitar logins redundantes e _warmup_event para sincronizar com run/listar."""
+    global _warmup_in_progress
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not (login_val and password_val and gemini_key):
+        return
+    with _warmup_lock:
+        if _warmup_in_progress:
+            return
+        _warmup_in_progress = True
+        _warmup_event.clear()  # sinaliza "login em andamento"
+
+    def _do_warmup() -> None:
+        global _warmup_in_progress
+        try:
+            client = ProeisHTTP(
+                login=login_val,
+                password=password_val,
+                twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+                gemini_api_key=gemini_key,
+            )
+            if not _try_restore_session(client):
+                login_with_retries(client, "Warmup automatico (abertura do painel)")
+                _fetch_user_name_and_save(client)
+        except Exception:
+            pass
+        finally:
+            with _warmup_lock:
+                _warmup_in_progress = False
+            _warmup_event.set()  # sinaliza "login concluido (ou falhou)"
+
+    threading.Thread(target=_do_warmup, daemon=True).start()
+
+
 @app.get("/api/session-status")
 def session_status():
-    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}."""
+    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}.
+    Se nao houver sessao valida, dispara login em background para pre-aquecer."""
     load_env_file()
     try:
         doc = _session_collection().document("current").get()
         if not doc.exists:
+            _trigger_warmup_login()
             return {"logged_in": False, "user_name": "", "saved_at": ""}
         data = doc.to_dict() or {}
-        saved_at_str = data.get("saved_at", "")
+        saved_at = data.get("saved_at")
+        # Verifica se sessao ainda esta dentro do TTL de 4h
+        if saved_at:
+            try:
+                age_s = (datetime.utcnow() - saved_at.replace(tzinfo=None)).total_seconds()
+                if age_s >= 14400:
+                    _trigger_warmup_login()
+                    return {"logged_in": False, "user_name": "", "saved_at": ""}
+            except Exception:
+                pass
+        saved_at_str = str(saved_at) if saved_at else ""
         return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
     except Exception:
         return {"logged_in": False, "user_name": "", "saved_at": ""}

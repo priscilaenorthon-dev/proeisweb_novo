@@ -613,8 +613,8 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash-lite")
-        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash-lite")
+        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash")
 
         if primary == secondary:
             result = self._solve_via_gemini_result(image, model=primary)
@@ -680,7 +680,7 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         b64 = base64.b64encode(image).decode("ascii")
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -1021,6 +1021,10 @@ class ProeisHTTP:
             if "erro ao confirmar imagem" in norm(str(soup)):
                 _log("FILTRO", f"Captcha de filtro recusado pelo site (tentativa {attempt}/{max_filter_attempts}); tentando novamente...")
                 self.report_bad_captcha()
+                refreshed = self.refresh_page_captcha(soup)
+                if refreshed is not None:
+                    soup = refreshed
+                    _log("CAPTCHA", "Nova imagem de captcha obtida apos rejeicao do filtro.")
                 continue
             _log("FILTRO", "Filtros aplicados com sucesso.")
             return
