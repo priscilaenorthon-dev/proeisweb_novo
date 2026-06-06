@@ -1138,8 +1138,11 @@ class ProeisHTTP:
         start_index = first_scan_date_index(dates, start_date)
         if start_index >= len(dates):
             raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
+        # Quando uma data especifica foi configurada, limita a varredura apenas a essa data.
+        # Sem data configurada, varre todas as datas disponiveis.
+        end_index = (start_index + 1) if start_date else len(dates)
         if start_date:
-            _log("VAGA", f"Varredura iniciando em '{dates[start_index][1]}' para respeitar a data inicial.")
+            _log("VAGA", f"Data especifica configurada: buscando apenas em '{dates[start_index][1]}'.")
         for scan_round in range(1, scan_rounds + 1):
             if confirmed >= quantidade:
                 break
@@ -1147,7 +1150,8 @@ class ProeisHTTP:
                 _log("VAGA", f"Rodada de varredura {scan_round}/{scan_rounds}.")
 
             date_index = start_index if scan_round == 1 else 0
-            while date_index < len(dates) and confirmed < quantidade:
+            scan_end = end_index if start_date else len(dates)
+            while date_index < scan_end and confirmed < quantidade:
                 _, label = dates[date_index]
                 _log("VAGA", f"Testando data: '{label}' (indice {date_index + 1}/{len(dates)})...")
                 self.navigate_to_service_page()
@@ -1504,10 +1508,12 @@ class ProeisHTTP:
         start_index = first_scan_date_index(dates, start_date)
         if start_index >= len(dates):
             raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
+        end_index = (start_index + 1) if start_date else len(dates)
 
         for scan_round in range(1, coerce_scan_rounds(scan_rounds) + 1):
             date_index = start_index if scan_round == 1 else 0
-            while date_index < len(dates) and simulated < quantidade:
+            scan_end = end_index if start_date else len(dates)
+            while date_index < scan_end and simulated < quantidade:
                 _, label = dates[date_index]
                 self.navigate_to_service_page()
                 self.fill_filters(convenio, label, cpa, prefer=prefer)
