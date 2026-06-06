@@ -1339,28 +1339,94 @@ document.getElementById('modal-overlay').addEventListener('click', function(e) {
 });
 
 // ── Serviços Marcados Page ─────────────────────────────────
+// ── Cache de serviços ───────────────────────────────────────
+const _SRV_CACHE_KEY = 'proeis_servicos_v1';
+
+function _saveServicosCache(data) {
+  try { localStorage.setItem(_SRV_CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
+function _loadServicosCache() {
+  try {
+    const raw = localStorage.getItem(_SRV_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > 8 * 3600 * 1000) return null; // 8h
+    return { data, ts };
+  } catch { return null; }
+}
+
+function _timeAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'agora mesmo';
+  if (mins < 60) return `há ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  return `há ${hrs}h`;
+}
+
+function _renderServicosHtml(data) {
+  if (!data.servicos || data.servicos.length === 0) {
+    return `<div class="empty-state">
+      <div class="text-5xl mb-4">🎉</div>
+      <p class="text-gray-400 text-lg font-medium">Nenhum serviço agendado</p>
+      ${data.nome ? `<p class="text-gray-600 text-sm mt-2">Conta: ${esc(data.nome)}</p>` : ''}
+    </div>`;
+  }
+  return `
+    ${data.nome ? `<p class="text-teal-400 text-sm mb-4 font-medium">👤 ${esc(data.nome)} — ${data.servicos.length} serviço(s) agendado(s)</p>` : ''}
+    <div class="space-y-3">
+      ${data.servicos.map(s => `
+        <div class="srv-card">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap mb-2">
+                <span class="text-white font-semibold text-base">${esc(s.evento || '—')}</span>
+                <span class="badge-tipo ${s.tipo_vaga?.toLowerCase().includes('reserva') ? 'reserva' : 'titular'}">${esc(s.tipo_vaga || '—')}</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-400">
+                ${s.data_hora ? `<span>📅 ${esc(s.data_hora)}</span>` : ''}
+                ${s.convenio  ? `<span>🏢 ${esc(s.convenio)}</span>` : ''}
+                ${s.ponto_encontro ? `<span>📍 ${esc(s.ponto_encontro)}</span>` : ''}
+                ${s.endereco  ? `<span>🗺️ ${esc(s.endereco)}</span>` : ''}
+                ${s.complemento ? `<span>🏠 ${esc(s.complemento)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 async function renderServicosPage() {
   const content = document.getElementById('content');
+  const cached = _loadServicosCache();
+  const cacheLabel = cached
+    ? `<span class="text-xs text-gray-600 ml-2">· atualizado ${_timeAgo(cached.ts)}</span>`
+    : '';
+
   content.innerHTML = `
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
           <h2 class="text-2xl font-bold text-white">Serviços Marcados</h2>
-          <p class="text-gray-500 text-sm mt-1">Serviços agendados no portal PROEIS</p>
+          <p class="text-gray-500 text-sm mt-1">Serviços agendados no portal PROEIS${cacheLabel}</p>
         </div>
         <button id="srv-reload-btn" onclick="loadServicos()" class="btn-primary">🔄 Atualizar</button>
       </div>
       <div id="srv-body">
-        <div class="empty-state">
-          <div class="text-5xl mb-4">📅</div>
-          <p class="text-gray-400">Clique em Atualizar para carregar seus serviços</p>
-        </div>
+        ${cached
+          ? _renderServicosHtml(cached.data)
+          : '<div class="empty-state"><div class="text-5xl mb-4">📅</div><p class="text-gray-400">Clique em Atualizar para carregar seus serviços</p></div>'}
       </div>
     </div>
   `;
-  // Carrega automaticamente se tiver credenciais salvas
-  const s = storage.getSettings();
-  if (await hasUsableCredentials(s)) loadServicos();
+
+  // Auto-carrega só se nao tem cache ainda
+  if (!cached) {
+    const s = storage.getSettings();
+    if (await hasUsableCredentials(s)) loadServicos();
+  }
 }
 
 async function loadServicos() {
@@ -1372,7 +1438,7 @@ async function loadServicos() {
   const btn = document.getElementById('srv-reload-btn');
   const body = document.getElementById('srv-body');
   if (btn) btn.disabled = true;
-  if (body) body.innerHTML = '<div class="flex items-center gap-3 text-gray-400 py-10 justify-center"><span class="animate-spin text-2xl">⏳</span> Fazendo login e carregando serviços...</div>';
+  if (body) body.innerHTML = '<div class="flex items-center gap-3 text-gray-400 py-10 justify-center"><span class="animate-spin text-2xl">⏳</span> Carregando serviços...</div>';
 
   try {
     const r = await fetch('/api/servicos-marcados', {
@@ -1387,40 +1453,12 @@ async function loadServicos() {
       return;
     }
 
-    if (!data.servicos || data.servicos.length === 0) {
-      if (body) body.innerHTML = `
-        <div class="empty-state">
-          <div class="text-5xl mb-4">🎉</div>
-          <p class="text-gray-400 text-lg font-medium">Nenhum serviço agendado</p>
-          ${data.nome ? `<p class="text-gray-600 text-sm mt-2">Conta: ${esc(data.nome)}</p>` : ''}
-        </div>`;
-      return;
-    }
+    _saveServicosCache(data);
+    if (body) body.innerHTML = _renderServicosHtml(data);
 
-    if (body) body.innerHTML = `
-      ${data.nome ? `<p class="text-teal-400 text-sm mb-4 font-medium">👤 ${esc(data.nome)} — ${data.servicos.length} serviço(s) agendado(s)</p>` : ''}
-      <div class="space-y-3">
-        ${data.servicos.map(s => `
-          <div class="srv-card">
-            <div class="flex items-start justify-between gap-4 flex-wrap">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 flex-wrap mb-2">
-                  <span class="text-white font-semibold text-base">${esc(s.evento || '—')}</span>
-                  <span class="badge-tipo ${s.tipo_vaga?.toLowerCase().includes('reserva') ? 'reserva' : 'titular'}">${esc(s.tipo_vaga || '—')}</span>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-400">
-                  ${s.data_hora ? `<span>📅 ${esc(s.data_hora)}</span>` : ''}
-                  ${s.convenio  ? `<span>🏢 ${esc(s.convenio)}</span>` : ''}
-                  ${s.ponto_encontro ? `<span>📍 ${esc(s.ponto_encontro)}</span>` : ''}
-                  ${s.endereco  ? `<span>🗺️ ${esc(s.endereco)}</span>` : ''}
-                  ${s.complemento ? `<span>🏠 ${esc(s.complemento)}</span>` : ''}
-                </div>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
+    // Atualiza o label de tempo no subtítulo
+    const sub = document.querySelector('#content .text-gray-500.text-sm');
+    if (sub) sub.innerHTML = `Serviços agendados no portal PROEIS <span class="text-xs text-gray-600 ml-2">· atualizado agora mesmo</span>`;
   } catch (err) {
     if (body) body.innerHTML = `<div class="result-badge result-err">❌ Erro: ${esc(err.message)}</div>`;
   } finally {

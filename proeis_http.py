@@ -347,12 +347,13 @@ class ProeisHTTP:
                 allow_redirects=True,
             )
             self.site_elapsed_seconds += time.monotonic() - t0
-            text = response.text
             final_url = response.url
-            if "Default.aspx" in final_url or "txtSenha" in text or "btnEntrar" in text:
-                _log("SESSION", "Sessao expirada (redirecionado para login).")
+            soup_check = BeautifulSoup(response.text, "html.parser")
+            # Detecta tela de login pelo URL ou pelos elementos reais (nao busca textual)
+            if "Default.aspx" in final_url or soup_check.select_one("#txtSenha") or soup_check.select_one("#btnEntrar"):
+                _log("SESSION", "Sessao expirada (tela de login detectada).")
                 return False
-            self.soup = BeautifulSoup(text, "html.parser")
+            self.soup = soup_check
             self.last_url = final_url
             if self.has_service_fields(self.soup):
                 _log("SESSION", "Sessao ativa — tela de servicos carregada diretamente (navegacao pulada).")
