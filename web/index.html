@@ -6,7 +6,7 @@
   <title>PROEIS Bot</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260603-12" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260603-10" />
+  <link rel="stylesheet" href="/styles.css?v=20260606-01" />
   <script>
     tailwind.config = {
       theme: {
@@ -57,7 +57,14 @@
       </button>
     </nav>
 
-    <div class="p-4 border-t border-gray-800">
+    <div class="p-4 border-t border-gray-800 space-y-2">
+      <div id="user-info" class="hidden items-center justify-between gap-1 text-xs">
+        <span class="text-gray-300 flex items-center gap-1 min-w-0">
+          <span class="shrink-0">&#128100;</span>
+          <span id="user-name-display" class="truncate"></span>
+        </span>
+        <button onclick="logoutSession()" class="text-red-400 hover:text-red-300 shrink-0 ml-2 font-medium">Sair</button>
+      </div>
       <div class="flex items-center gap-2 text-xs text-gray-500">
         <span id="status-dot" class="w-2 h-2 rounded-full bg-gray-600 shrink-0"></span>
         <span id="status-text">Verificando API...</span>
@@ -75,7 +82,7 @@
     <div id="modal-box" class="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl"></div>
   </div>
 
-  <script src="/app.js?v=20260603-11"></script>
-  <script src="/proeis-fixes.js?v=20260603-12"></script>
+  <script src="/app.js?v=20260606-02"></script>
+  <script src="/proeis-fixes.js?v=20260606-02"></script>
 </body>
 </html>

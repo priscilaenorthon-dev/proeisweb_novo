@@ -614,7 +614,8 @@ async function renderRunPage() {
 
 // ── Listar Vagas Page ──────────────────────────────────────
 let _listLogEl = null;
-let _vagasStore = []; // guarda vagas da sessão atual para referenciar por índice
+let _vagasStore = [];
+let _listarTab = 'log';
 
 async function renderListarPage() {
   const opts = await loadOptions();
@@ -626,9 +627,9 @@ async function renderListarPage() {
         <h2 class="text-2xl font-bold text-white">Listar Vagas</h2>
         <p class="text-gray-500 text-sm mt-1">Consulta todas as vagas disponíveis sem marcar</p>
       </div>
-      <div class="flex gap-5 flex-1">
+      <div class="flex gap-5 flex-1 listar-page-cols">
         <!-- Painel esquerdo -->
-        <div class="w-72 shrink-0 flex flex-col gap-4">
+        <div class="listar-left-panel w-72 shrink-0 flex flex-col gap-4">
           <div class="card">
             <span class="text-sm font-semibold text-white block mb-4">Filtros</span>
             <div class="space-y-4">
@@ -657,7 +658,12 @@ async function renderListarPage() {
           <button id="list-stop-btn" onclick="stopList()" class="btn-danger w-full hidden">⏹ Parar</button>
         </div>
         <!-- Painel direito -->
-        <div class="flex-1 flex flex-col gap-4 min-w-0 listar-workspace">
+        <div class="flex-1 min-w-0 flex flex-col">
+          <div class="listar-tab-bar">
+            <button id="tab-log" class="listar-tab active" onclick="switchListarTab('log')">📋 Log</button>
+            <button id="tab-vagas" class="listar-tab" onclick="switchListarTab('vagas')">📊 Vagas listadas <span id="tab-vagas-count" class="listar-tab-count"></span></button>
+          </div>
+          <div class="flex-1 flex flex-col gap-4 listar-workspace">
           <div class="card flex flex-col listar-log-card" style="min-height:200px; max-height:260px">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-semibold text-white">Log</span>
@@ -689,11 +695,13 @@ async function renderListarPage() {
               </table>
             </div>
           </div>
+          </div>
         </div>
       </div>
     </div>
   `;
   _listLogEl = document.getElementById('list-log-el');
+  _listarTab = 'log';
 
   // Pré-seleciona com o primeiro evento cadastrado, se houver
   const evs = await loadEvents();
@@ -719,14 +727,36 @@ function _appendToLog(el, text, cls) {
 
 function appendListLog(text, cls = '') { _appendToLog(_listLogEl, text, cls); }
 
+function switchListarTab(tab) {
+  _listarTab = tab;
+  const logCard   = document.querySelector('.listar-log-card');
+  const vagasPanel = document.getElementById('vagas-el');
+  const tabLog    = document.getElementById('tab-log');
+  const tabVagas  = document.getElementById('tab-vagas');
+  if (tab === 'log') {
+    logCard?.classList.remove('listar-panel-hidden');
+    vagasPanel?.classList.add('listar-panel-hidden');
+    tabLog?.classList.add('active');
+    tabVagas?.classList.remove('active');
+  } else {
+    logCard?.classList.add('listar-panel-hidden');
+    vagasPanel?.classList.remove('listar-panel-hidden');
+    tabLog?.classList.remove('active');
+    tabVagas?.classList.add('active');
+  }
+}
+
 function clearListLog() {
   if (_listLogEl) _listLogEl.innerHTML = '<span class="text-gray-600">Log limpo.</span>';
   const v = document.getElementById('vagas-el');
-  if (v) v.classList.add('hidden');
+  if (v) { v.classList.add('hidden'); v.classList.remove('listar-panel-hidden'); }
   const vb = document.getElementById('vagas-body');
   if (vb) vb.innerHTML = '';
   const vc = document.getElementById('vagas-count');
   if (vc) vc.textContent = '';
+  const tvc = document.getElementById('tab-vagas-count');
+  if (tvc) tvc.textContent = '';
+  switchListarTab('log');
 }
 
 async function startListVagas() {
@@ -748,10 +778,13 @@ async function startListVagas() {
 
   if (_listLogEl) _listLogEl.innerHTML = '';
   _vagasStore = [];
+  switchListarTab('log');
+  const tabVagasCount = document.getElementById('tab-vagas-count');
+  if (tabVagasCount) tabVagasCount.textContent = '';
   const vagasEl   = document.getElementById('vagas-el');
   const vagasBody = document.getElementById('vagas-body');
   const vagasCount = document.getElementById('vagas-count');
-  if (vagasEl) { vagasEl.classList.add('hidden'); }
+  if (vagasEl) { vagasEl.classList.add('hidden'); vagasEl.classList.remove('listar-panel-hidden'); }
   if (vagasBody) vagasBody.innerHTML = '';
   let totalVagas = 0;
   let _currentTipo = 'nao-reserva'; // rastreia pelo stream de log
@@ -778,6 +811,8 @@ async function startListVagas() {
             const nomeEvento = vaga.nome || parsed.nome;
             const endEvento  = vaga.endereco || parsed.endereco;
             totalVagas++;
+            if (tabVagasCount) tabVagasCount.textContent = `(${totalVagas})`;
+            if (totalVagas === 1) switchListarTab('vagas');
             if (vagasBody) {
               const vagaIdx = _vagasStore.length;
               _vagasStore.push({ ...vaga, convenio, cpa, tipo: _currentTipo, hora });
@@ -1304,28 +1339,94 @@ document.getElementById('modal-overlay').addEventListener('click', function(e) {
 });
 
 // ── Serviços Marcados Page ─────────────────────────────────
+// ── Cache de serviços ───────────────────────────────────────
+const _SRV_CACHE_KEY = 'proeis_servicos_v1';
+
+function _saveServicosCache(data) {
+  try { localStorage.setItem(_SRV_CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
+function _loadServicosCache() {
+  try {
+    const raw = localStorage.getItem(_SRV_CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > 8 * 3600 * 1000) return null; // 8h
+    return { data, ts };
+  } catch { return null; }
+}
+
+function _timeAgo(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'agora mesmo';
+  if (mins < 60) return `há ${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  return `há ${hrs}h`;
+}
+
+function _renderServicosHtml(data) {
+  if (!data.servicos || data.servicos.length === 0) {
+    return `<div class="empty-state">
+      <div class="text-5xl mb-4">🎉</div>
+      <p class="text-gray-400 text-lg font-medium">Nenhum serviço agendado</p>
+      ${data.nome ? `<p class="text-gray-600 text-sm mt-2">Conta: ${esc(data.nome)}</p>` : ''}
+    </div>`;
+  }
+  return `
+    ${data.nome ? `<p class="text-teal-400 text-sm mb-4 font-medium">👤 ${esc(data.nome)} — ${data.servicos.length} serviço(s) agendado(s)</p>` : ''}
+    <div class="space-y-3">
+      ${data.servicos.map(s => `
+        <div class="srv-card">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap mb-2">
+                <span class="text-white font-semibold text-base">${esc(s.evento || '—')}</span>
+                <span class="badge-tipo ${s.tipo_vaga?.toLowerCase().includes('reserva') ? 'reserva' : 'titular'}">${esc(s.tipo_vaga || '—')}</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-400">
+                ${s.data_hora ? `<span>📅 ${esc(s.data_hora)}</span>` : ''}
+                ${s.convenio  ? `<span>🏢 ${esc(s.convenio)}</span>` : ''}
+                ${s.ponto_encontro ? `<span>📍 ${esc(s.ponto_encontro)}</span>` : ''}
+                ${s.endereco  ? `<span>🗺️ ${esc(s.endereco)}</span>` : ''}
+                ${s.complemento ? `<span>🏠 ${esc(s.complemento)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 async function renderServicosPage() {
   const content = document.getElementById('content');
+  const cached = _loadServicosCache();
+  const cacheLabel = cached
+    ? `<span class="text-xs text-gray-600 ml-2">· atualizado ${_timeAgo(cached.ts)}</span>`
+    : '';
+
   content.innerHTML = `
     <div class="p-6">
       <div class="flex items-center justify-between mb-6">
         <div>
           <h2 class="text-2xl font-bold text-white">Serviços Marcados</h2>
-          <p class="text-gray-500 text-sm mt-1">Serviços agendados no portal PROEIS</p>
+          <p class="text-gray-500 text-sm mt-1">Serviços agendados no portal PROEIS${cacheLabel}</p>
         </div>
         <button id="srv-reload-btn" onclick="loadServicos()" class="btn-primary">🔄 Atualizar</button>
       </div>
       <div id="srv-body">
-        <div class="empty-state">
-          <div class="text-5xl mb-4">📅</div>
-          <p class="text-gray-400">Clique em Atualizar para carregar seus serviços</p>
-        </div>
+        ${cached
+          ? _renderServicosHtml(cached.data)
+          : '<div class="empty-state"><div class="text-5xl mb-4">📅</div><p class="text-gray-400">Clique em Atualizar para carregar seus serviços</p></div>'}
       </div>
     </div>
   `;
-  // Carrega automaticamente se tiver credenciais salvas
-  const s = storage.getSettings();
-  if (await hasUsableCredentials(s)) loadServicos();
+
+  // Auto-carrega só se nao tem cache ainda
+  if (!cached) {
+    const s = storage.getSettings();
+    if (await hasUsableCredentials(s)) loadServicos();
+  }
 }
 
 async function loadServicos() {
@@ -1337,7 +1438,7 @@ async function loadServicos() {
   const btn = document.getElementById('srv-reload-btn');
   const body = document.getElementById('srv-body');
   if (btn) btn.disabled = true;
-  if (body) body.innerHTML = '<div class="flex items-center gap-3 text-gray-400 py-10 justify-center"><span class="animate-spin text-2xl">⏳</span> Fazendo login e carregando serviços...</div>';
+  if (body) body.innerHTML = '<div class="flex items-center gap-3 text-gray-400 py-10 justify-center"><span class="animate-spin text-2xl">⏳</span> Carregando serviços...</div>';
 
   try {
     const r = await fetch('/api/servicos-marcados', {
@@ -1352,40 +1453,12 @@ async function loadServicos() {
       return;
     }
 
-    if (!data.servicos || data.servicos.length === 0) {
-      if (body) body.innerHTML = `
-        <div class="empty-state">
-          <div class="text-5xl mb-4">🎉</div>
-          <p class="text-gray-400 text-lg font-medium">Nenhum serviço agendado</p>
-          ${data.nome ? `<p class="text-gray-600 text-sm mt-2">Conta: ${esc(data.nome)}</p>` : ''}
-        </div>`;
-      return;
-    }
+    _saveServicosCache(data);
+    if (body) body.innerHTML = _renderServicosHtml(data);
 
-    if (body) body.innerHTML = `
-      ${data.nome ? `<p class="text-teal-400 text-sm mb-4 font-medium">👤 ${esc(data.nome)} — ${data.servicos.length} serviço(s) agendado(s)</p>` : ''}
-      <div class="space-y-3">
-        ${data.servicos.map(s => `
-          <div class="srv-card">
-            <div class="flex items-start justify-between gap-4 flex-wrap">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2 flex-wrap mb-2">
-                  <span class="text-white font-semibold text-base">${esc(s.evento || '—')}</span>
-                  <span class="badge-tipo ${s.tipo_vaga?.toLowerCase().includes('reserva') ? 'reserva' : 'titular'}">${esc(s.tipo_vaga || '—')}</span>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm text-gray-400">
-                  ${s.data_hora ? `<span>📅 ${esc(s.data_hora)}</span>` : ''}
-                  ${s.convenio  ? `<span>🏢 ${esc(s.convenio)}</span>` : ''}
-                  ${s.ponto_encontro ? `<span>📍 ${esc(s.ponto_encontro)}</span>` : ''}
-                  ${s.endereco  ? `<span>🗺️ ${esc(s.endereco)}</span>` : ''}
-                  ${s.complemento ? `<span>🏠 ${esc(s.complemento)}</span>` : ''}
-                </div>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
+    // Atualiza o label de tempo no subtítulo
+    const sub = document.querySelector('#content .text-gray-500.text-sm');
+    if (sub) sub.innerHTML = `Serviços agendados no portal PROEIS <span class="text-xs text-gray-600 ml-2">· atualizado agora mesmo</span>`;
   } catch (err) {
     if (body) body.innerHTML = `<div class="result-badge result-err">❌ Erro: ${esc(err.message)}</div>`;
   } finally {
@@ -1482,6 +1555,15 @@ async function renderPage() {
   }
 }
 
+// ── Session / logout ───────────────────────────────────────
+async function logoutSession() {
+  try { await api.post('/api/session-logout', {}); } catch { /* ignore */ }
+  const userInfo = document.getElementById('user-info');
+  userInfo?.classList.add('hidden');
+  userInfo?.classList.remove('flex');
+  document.getElementById('user-name-display').textContent = '';
+}
+
 // ── API status ─────────────────────────────────────────────
 async function checkApiStatus() {
   try {
@@ -1492,6 +1574,18 @@ async function checkApiStatus() {
     document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-red-400 shrink-0';
     document.getElementById('status-text').textContent = 'API offline';
   }
+  try {
+    const sess = await api.get('/api/session-status');
+    const userInfo = document.getElementById('user-info');
+    if (sess && sess.logged_in) {
+      document.getElementById('user-name-display').textContent = sess.user_name || 'Logado';
+      userInfo?.classList.remove('hidden');
+      userInfo?.classList.add('flex');
+    } else {
+      userInfo?.classList.add('hidden');
+      userInfo?.classList.remove('flex');
+    }
+  } catch { /* session status nao critico */ }
 }
 
 // ── Init ───────────────────────────────────────────────────

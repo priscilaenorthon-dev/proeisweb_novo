@@ -331,6 +331,40 @@ class ProeisHTTP:
         self.last_url = DEFAULT_URL
         self.soup = None
 
+    def check_auth(self) -> bool:
+        """Verifica se a sessao atual esta autenticada.
+
+        Tenta ir direto para a tela de servicos (ASSOCIAR_URL). Se o PROEIS
+        carregar diretamente, navigate_to_service_page() vira no-op e economiza
+        ~0.4s de navegacao. Se redirecionar para o menu, comportamento identico
+        ao anterior (sem regressao).
+        """
+        t0 = time.monotonic()
+        try:
+            response = self.session.request(
+                "GET", ASSOCIAR_URL,
+                timeout=(int(os.getenv("PROEIS_CONNECT_TIMEOUT", "8")), 10),
+                allow_redirects=True,
+            )
+            self.site_elapsed_seconds += time.monotonic() - t0
+            final_url = response.url
+            soup_check = BeautifulSoup(response.text, "html.parser")
+            # Detecta tela de login pelo URL ou pelos elementos reais (nao busca textual)
+            if "Default.aspx" in final_url or soup_check.select_one("#txtSenha") or soup_check.select_one("#btnEntrar"):
+                _log("SESSION", "Sessao expirada (tela de login detectada).")
+                return False
+            self.soup = soup_check
+            self.last_url = final_url
+            if self.has_service_fields(self.soup):
+                _log("SESSION", "Sessao ativa — tela de servicos carregada diretamente (navegacao pulada).")
+            else:
+                _log("SESSION", "Sessao ativa — redirecionado ao menu (navegacao normal).")
+            return True
+        except Exception as exc:
+            self.site_elapsed_seconds += time.monotonic() - t0
+            _log("SESSION", f"Erro ao verificar sessao: {exc}")
+            return False
+
     def request(self, method: str, url: str, **kwargs) -> BeautifulSoup:
         last_error: Exception | None = None
         max_attempts = int(os.getenv("PROEIS_HTTP_ATTEMPTS", "2"))
@@ -802,7 +836,12 @@ class ProeisHTTP:
     def _try_navigate_to_service_page(self) -> bool:
         _phase("FASE 2/4: NAVEGAÇÃO")
         _log("NAV", f"Acessando menu e navegando para tela de serviços ({MENU_URL.split('/')[-1]})...")
-        soup = self.request("GET", MENU_URL)
+        menu_filename = MENU_URL.split("/")[-1]
+        if self.soup is not None and self.last_url and menu_filename in self.last_url:
+            _log("NAV", "Reutilizando pagina do menu ja carregada (sem nova requisicao).")
+            soup = self.soup
+        else:
+            soup = self.request("GET", MENU_URL)
 
         if soup.select_one("#btnEscala") or "btnEscala" in str(soup):
             _log("NAV", "Botao 'Escala' encontrado. Clicando via postback...")
@@ -1091,16 +1130,29 @@ class ProeisHTTP:
         _phase("FASE 4/4: MARCAÇÃO DE VAGA")
         _log("VAGA", f"Meta={quantidade} vaga(s) | Prefer='{prefer}' | Rounds={scan_rounds} | Data inicial='{start_date}'")
         self.navigate_to_service_page()
-        dates = self.dates_for_convenio(convenio)
-        print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
 
         confirmed = 0
         scan_rounds = coerce_scan_rounds(scan_rounds)
-        start_index = first_scan_date_index(dates, start_date)
-        if start_index >= len(dates):
-            raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
+
         if start_date:
-            _log("VAGA", f"Varredura iniciando em '{dates[start_index][1]}' para respeitar a data inicial.")
+            # Data especifica conhecida: pula dates_for_convenio() e re-navegacao.
+            # fill_filters fara o POST de convenio por conta propria.
+            # Economiza ~400ms (1 POST de EVENTTARGET + navegacao extra).
+            normalized_start = normalize_date_for_site(start_date)
+            dates: list[tuple[str, str]] = [(None, normalized_start)]  # type: ignore[list-item]
+            _log("VAGA", f"Data especifica: buscando apenas em '{normalized_start}' (sem varredura de datas).")
+            print(f"[VAGAS] Data especifica: '{normalized_start}'.")
+            start_index, end_index = 0, 1
+        else:
+            # Modo varredura: enumera todas as datas disponiveis no convenio.
+            # Reset de soup necessario pois dates_for_convenio usa postback parcial
+            # (EVENTTARGET=ddlConvenios) que deixa ViewState invalido para captcha.
+            dates = self.dates_for_convenio(convenio)
+            print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
+            self.soup = None
+            start_index = first_scan_date_index(dates, "")
+            end_index = len(dates)
+
         for scan_round in range(1, scan_rounds + 1):
             if confirmed >= quantidade:
                 break
@@ -1108,9 +1160,10 @@ class ProeisHTTP:
                 _log("VAGA", f"Rodada de varredura {scan_round}/{scan_rounds}.")
 
             date_index = start_index if scan_round == 1 else 0
-            while date_index < len(dates) and confirmed < quantidade:
+            scan_end = end_index
+            while date_index < scan_end and confirmed < quantidade:
                 _, label = dates[date_index]
-                _log("VAGA", f"Testando data: '{label}' (indice {date_index + 1}/{len(dates)})...")
+                _log("VAGA", f"Testando data: '{label}' ({date_index + 1}/{len(dates)})...")
                 self.navigate_to_service_page()
                 self.fill_filters(convenio, label, cpa, prefer=prefer)
                 candidates = self.available_candidates(self.require_soup(), prefer)
@@ -1465,10 +1518,12 @@ class ProeisHTTP:
         start_index = first_scan_date_index(dates, start_date)
         if start_index >= len(dates):
             raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
+        end_index = (start_index + 1) if start_date else len(dates)
 
         for scan_round in range(1, coerce_scan_rounds(scan_rounds) + 1):
             date_index = start_index if scan_round == 1 else 0
-            while date_index < len(dates) and simulated < quantidade:
+            scan_end = end_index if start_date else len(dates)
+            while date_index < scan_end and simulated < quantidade:
                 _, label = dates[date_index]
                 self.navigate_to_service_page()
                 self.fill_filters(convenio, label, cpa, prefer=prefer)
@@ -1500,7 +1555,16 @@ class ProeisHTTP:
         endereco: str = "",
     ) -> bool:
         soup = self.require_soup()
-        candidates = self.available_candidates(soup, prefer)
+        prefer_norm = norm(prefer)
+        should_try_fallback = prefer_norm in {"nao-reserva", "sem-reserva", "normal"}
+
+        # Carrega todos os candidatos uma unica vez; evita parse duplo da mesma pagina
+        all_candidates = self.available_candidates(soup, "qualquer")
+        candidates = (
+            [c for c in all_candidates if self.matches_preference(norm(c.label), prefer_norm)]
+            if should_try_fallback
+            else all_candidates
+        )
         prefer_used = prefer
         filters = {"nome": nome_evento, "hora": hora_evento, "turno": turno, "endereco": endereco}
         active_filters = {k: v for k, v in filters.items() if v}
@@ -1510,13 +1574,10 @@ class ProeisHTTP:
             if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
         ]
 
-        prefer_norm = norm(prefer)
-        should_try_fallback = prefer_norm in {"nao-reserva", "sem-reserva", "normal"}
         if not filtered and should_try_fallback:
-            any_candidates = self.available_candidates(soup, "qualquer")
             any_filtered = [
                 candidate
-                for candidate in any_candidates
+                for candidate in all_candidates
                 if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
             ]
             if any_filtered:
@@ -1525,7 +1586,7 @@ class ProeisHTTP:
                     "Fallback de disponibilidade: nao encontrei linha exata em 'nao-reserva'; "
                     "continuando com candidatos de 'qualquer' para nao perder vaga compativel.",
                 )
-                candidates = any_candidates
+                candidates = all_candidates
                 filtered = any_filtered
                 prefer_used = "qualquer"
 
@@ -1587,9 +1648,7 @@ class ProeisHTTP:
             nome_norm = norm_match(nome)
             if not nome_norm:
                 return True
-            if nome_norm in label_norm:
-                return True
-            return _word_overlap_ratio(nome, min_len=3) >= 0.6
+            return nome_norm in label_norm
 
         def hora_matches(hora: str) -> bool:
             if not hora:

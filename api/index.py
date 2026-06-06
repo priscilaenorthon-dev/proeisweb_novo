@@ -217,7 +217,9 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         twocaptcha_key=twocaptcha,
         gemini_api_key=gemini_key,
     )
-    login_with_retries(client, "Login via agendamento Cloud Scheduler")
+    if not _try_restore_session(client):
+        login_with_retries(client, "Login via agendamento Cloud Scheduler")
+        _fetch_user_name_and_save(client)
     confirmed = client.mark_scanning_dates(
         body.convenio,
         body.cpa,
@@ -243,7 +245,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
 _env_lock = threading.Lock()
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
-_LOGS_LIMIT = 50
+_LOGS_LIMIT = 200
 
 
 def _sse_data(item: dict[str, Any]) -> str:
@@ -325,6 +327,85 @@ def _events_collection():
 
 def _logs_collection():
     return _firestore_db().collection(os.getenv("FIRESTORE_LOGS_COLLECTION", "operation_logs"))
+
+
+def _session_collection():
+    return _firestore_db().collection(
+        os.getenv("FIRESTORE_SESSION_COLLECTION", "proeis_session")
+    )
+
+
+def _save_session(client: ProeisHTTP, user_name: str) -> None:
+    """Salva cookies e nome do usuario no Firestore para reutilizacao na proxima operacao."""
+    try:
+        _session_collection().document("current").set({
+            "cookies": dict(client.session.cookies),
+            "user_name": user_name,
+            "login": client.login,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"[SESSION] Sessao salva (usuario: {user_name or client.login}).")
+    except Exception as exc:
+        print(f"[SESSION] Aviso: nao foi possivel salvar sessao: {exc}")
+
+
+def _load_session(client: ProeisHTTP) -> dict:
+    """Carrega cookies do Firestore para client.session. Retorna {valid, user_name}."""
+    try:
+        doc = _session_collection().document("current").get()
+        if not doc.exists:
+            return {"valid": False, "user_name": ""}
+        data = doc.to_dict() or {}
+        if data.get("login", "") != client.login:
+            return {"valid": False, "user_name": ""}
+        for name, value in (data.get("cookies") or {}).items():
+            client.session.cookies.set(name, value)
+        return {"valid": True, "user_name": data.get("user_name", "")}
+    except Exception as exc:
+        print(f"[SESSION] Erro ao carregar sessao: {exc}")
+        return {"valid": False, "user_name": ""}
+
+
+def _try_restore_session(client: ProeisHTTP) -> bool:
+    """Carrega cookies e verifica se sessao ainda e valida. True = login nao necessario."""
+    result = _load_session(client)
+    if not result["valid"]:
+        return False
+    try:
+        if client.check_auth():
+            user = result["user_name"] or client.login
+            print(f"[SESSION] Sessao restaurada para '{user}' (login ignorado).")
+            return True
+        print("[SESSION] Cookies carregados mas sessao invalida no servidor.")
+        return False
+    except Exception as exc:
+        print(f"[SESSION] Erro ao validar sessao restaurada: {exc}")
+        return False
+
+
+def _fetch_user_name_and_save(client: ProeisHTTP) -> None:
+    """Apos login novo: busca nome do usuario no menu e persiste sessao no Firestore."""
+    try:
+        soup = client.request("GET", MENU_URL)
+        nome = ""
+        for sel in ["#lblNomeVoluntario", "#lblNome", "#lblUsuario",
+                    "[id*='lblNome']", "[id*='lblUsuario']"]:
+            el = soup.select_one(sel)
+            if el:
+                nome = el.get_text(strip=True)
+                if nome:
+                    break
+        if not nome:
+            txt = soup.get_text(" ", strip=True)
+            m = re.search(
+                r"(?:bem[- ]?vindo|ol[aá])[,:]?\s+([A-ZÀ-Ú][A-Za-zÀ-ú\s]{2,40})",
+                txt, re.IGNORECASE,
+            )
+            if m:
+                nome = m.group(1).strip()
+        _save_session(client, nome)
+    except Exception as exc:
+        print(f"[SESSION] Aviso: nao salvou sessao apos login: {exc}")
 
 
 def _event_payload(body: RunRequest) -> dict[str, Any]:
@@ -532,8 +613,15 @@ def get_servicos_marcados(body: ServicosRequest):
             login=login_val, password=pwd_val,
             twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
         )
-        login_with_retries(client, "Buscar servicos marcados")
-        soup = client.request("GET", MENU_URL)
+        session_restored = _try_restore_session(client)
+        if not session_restored:
+            login_with_retries(client, "Buscar servicos marcados")
+
+        # Se sessao foi restaurada, soup ja e o menu (do check_auth). Senao, busca agora.
+        if session_restored and client.soup is not None:
+            soup = client.soup
+        else:
+            soup = client.request("GET", MENU_URL)
 
         nome = ""
         for sel in ["#lblNomeVoluntario", "#lblNome", "[id*='lblNome']"]:
@@ -542,6 +630,8 @@ def get_servicos_marcados(body: ServicosRequest):
                 nome = el.get_text(strip=True)
                 if nome:
                     break
+
+        _save_session(client, nome)
 
         ta = soup.select_one("#txtEveVoluntario")
         raw = ta.get_text("\n", strip=True) if ta else ""
@@ -699,7 +789,9 @@ async def run_automation(body: RunRequest):
                     gemini_api_key=gemini_key,
                 )
 
-            login_with_retries(client, "Login via painel web")
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via painel web")
+                _fetch_user_name_and_save(client)
 
             confirmed = client.mark_scanning_dates(
                 body.convenio,
@@ -818,7 +910,9 @@ async def list_vagas(body: ListVagasRequest):
                     gemini_api_key=gemini_key,
                 )
 
-            login_with_retries(client, "Login via painel web (listagem)")
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via painel web (listagem)")
+                _fetch_user_name_and_save(client)
             client.navigate_to_service_page()
 
             if body.data_especifica:
@@ -895,9 +989,11 @@ async def list_vagas(body: ListVagasRequest):
 
 
 @app.get("/api/logs")
-def list_logs():
-    """Lista as operacoes mais recentes."""
+def list_logs(kind: str = ""):
+    """Lista as operacoes mais recentes. Filtro opcional: ?kind=agendamento|run|listar"""
     stored = _firestore_logs()
+    if kind:
+        stored = [item for item in stored if item.get("kind", "") == kind]
     if stored:
         return {
             "logs": [
@@ -967,6 +1063,77 @@ def get_log(op_id: str):
         raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
     log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
+
+
+@app.get("/api/session-status")
+def session_status():
+    """Retorna status da sessao persistida: {logged_in, user_name, saved_at}."""
+    load_env_file()
+    try:
+        doc = _session_collection().document("current").get()
+        if not doc.exists:
+            return {"logged_in": False, "user_name": "", "saved_at": ""}
+        data = doc.to_dict() or {}
+        saved_at_str = data.get("saved_at", "")
+        return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
+    except Exception:
+        return {"logged_in": False, "user_name": "", "saved_at": ""}
+
+
+@app.post("/api/session-logout")
+def session_logout():
+    """Apaga a sessao persistida do Firestore, forcando novo login na proxima operacao."""
+    load_env_file()
+    try:
+        _session_collection().document("current").delete()
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/session-keepalive")
+def session_keepalive(x_scheduler_secret: str = Header(default="")):
+    """Mantém a sessao PROEIS ativa. Chamar via Cloud Scheduler a cada 10 min.
+    Se a sessao ainda for valida, renova saved_at. Se expirou, faz login completo.
+    """
+    load_env_file()
+    expected_secret = os.getenv("SCHEDULER_SECRET", "")
+    if expected_secret and not secrets.compare_digest(x_scheduler_secret, expected_secret):
+        raise HTTPException(status_code=401, detail="Nao autorizado.")
+
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    if not login_val or not password_val or not gemini_key:
+        return {"ok": False, "status": "sem_credenciais"}
+
+    client = ProeisHTTP(
+        login=login_val,
+        password=password_val,
+        twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+        gemini_api_key=gemini_key,
+    )
+
+    if _try_restore_session(client):
+        doc = _session_collection().document("current").get()
+        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+        _session_collection().document("current").update({
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"[KEEPALIVE] Sessao ativa para '{user_name}'. saved_at atualizado.")
+        return {"ok": True, "status": "ativa", "user_name": user_name}
+
+    try:
+        login_with_retries(client, "Keepalive automatico")
+        _fetch_user_name_and_save(client)
+        doc = _session_collection().document("current").get()
+        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+        print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
+        return {"ok": True, "status": "renovada", "user_name": user_name}
+    except Exception as exc:
+        print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
+        return {"ok": False, "status": "erro", "message": str(exc)}
 
 
 from starlette.staticfiles import StaticFiles
