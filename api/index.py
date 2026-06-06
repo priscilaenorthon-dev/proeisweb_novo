@@ -358,18 +358,6 @@ def _load_session(client: ProeisHTTP) -> dict:
         data = doc.to_dict() or {}
         if data.get("login", "") != client.login:
             return {"valid": False, "user_name": ""}
-        saved_at_str = data.get("saved_at", "")
-        if saved_at_str:
-            try:
-                saved_at = datetime.fromisoformat(saved_at_str)
-                if saved_at.tzinfo is None:
-                    saved_at = saved_at.replace(tzinfo=timezone.utc)
-                age = (datetime.now(timezone.utc) - saved_at).total_seconds()
-                if age > 14400:
-                    print(f"[SESSION] Sessao expirada por tempo ({int(age / 3600)}h). Novo login necessario.")
-                    return {"valid": False, "user_name": ""}
-            except Exception:
-                pass
         for name, value in (data.get("cookies") or {}).items():
             client.session.cookies.set(name, value)
         return {"valid": True, "user_name": data.get("user_name", "")}
@@ -1087,15 +1075,6 @@ def session_status():
             return {"logged_in": False, "user_name": "", "saved_at": ""}
         data = doc.to_dict() or {}
         saved_at_str = data.get("saved_at", "")
-        if saved_at_str:
-            try:
-                saved_at = datetime.fromisoformat(saved_at_str)
-                if saved_at.tzinfo is None:
-                    saved_at = saved_at.replace(tzinfo=timezone.utc)
-                if (datetime.now(timezone.utc) - saved_at).total_seconds() > 14400:
-                    return {"logged_in": False, "user_name": "", "saved_at": saved_at_str}
-            except Exception:
-                pass
         return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
     except Exception:
         return {"logged_in": False, "user_name": "", "saved_at": ""}
