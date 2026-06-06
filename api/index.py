@@ -1091,6 +1091,51 @@ def session_logout():
         return {"ok": False, "error": str(exc)}
 
 
+@app.post("/api/session-keepalive")
+def session_keepalive(x_scheduler_secret: str = Header(default="")):
+    """Mantém a sessao PROEIS ativa. Chamar via Cloud Scheduler a cada 10 min.
+    Se a sessao ainda for valida, renova saved_at. Se expirou, faz login completo.
+    """
+    load_env_file()
+    expected_secret = os.getenv("SCHEDULER_SECRET", "")
+    if expected_secret and not secrets.compare_digest(x_scheduler_secret, expected_secret):
+        raise HTTPException(status_code=401, detail="Nao autorizado.")
+
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    if not login_val or not password_val or not gemini_key:
+        return {"ok": False, "status": "sem_credenciais"}
+
+    client = ProeisHTTP(
+        login=login_val,
+        password=password_val,
+        twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+        gemini_api_key=gemini_key,
+    )
+
+    if _try_restore_session(client):
+        doc = _session_collection().document("current").get()
+        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+        _session_collection().document("current").update({
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        })
+        print(f"[KEEPALIVE] Sessao ativa para '{user_name}'. saved_at atualizado.")
+        return {"ok": True, "status": "ativa", "user_name": user_name}
+
+    try:
+        login_with_retries(client, "Keepalive automatico")
+        _fetch_user_name_and_save(client)
+        doc = _session_collection().document("current").get()
+        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+        print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
+        return {"ok": True, "status": "renovada", "user_name": user_name}
+    except Exception as exc:
+        print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
+        return {"ok": False, "status": "erro", "message": str(exc)}
+
+
 from starlette.staticfiles import StaticFiles
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")

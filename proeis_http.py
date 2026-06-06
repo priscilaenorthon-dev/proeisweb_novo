@@ -1130,24 +1130,29 @@ class ProeisHTTP:
         _phase("FASE 4/4: MARCAÇÃO DE VAGA")
         _log("VAGA", f"Meta={quantidade} vaga(s) | Prefer='{prefer}' | Rounds={scan_rounds} | Data inicial='{start_date}'")
         self.navigate_to_service_page()
-        dates = self.dates_for_convenio(convenio)
-        print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
-        # Apos dates_for_convenio() o soup fica num estado de postback parcial
-        # (__EVENTTARGET=ddlConvenios). Se reutilizado diretamente em fill_filters,
-        # o VIEWSTATE nao e valido para submissao com captcha e o site rejeita o captcha.
-        # Resetar a soup forca navigate_to_service_page() a navegar de forma completa.
-        self.soup = None
 
         confirmed = 0
         scan_rounds = coerce_scan_rounds(scan_rounds)
-        start_index = first_scan_date_index(dates, start_date)
-        if start_index >= len(dates):
-            raise AutomationError("Nenhuma data disponivel igual ou posterior a data inicial informada.")
-        # Quando uma data especifica foi configurada, limita a varredura apenas a essa data.
-        # Sem data configurada, varre todas as datas disponiveis.
-        end_index = (start_index + 1) if start_date else len(dates)
+
         if start_date:
-            _log("VAGA", f"Data especifica configurada: buscando apenas em '{dates[start_index][1]}'.")
+            # Data especifica conhecida: pula dates_for_convenio() e re-navegacao.
+            # fill_filters fara o POST de convenio por conta propria.
+            # Economiza ~400ms (1 POST de EVENTTARGET + navegacao extra).
+            normalized_start = normalize_date_for_site(start_date)
+            dates: list[tuple[str, str]] = [(None, normalized_start)]  # type: ignore[list-item]
+            _log("VAGA", f"Data especifica: buscando apenas em '{normalized_start}' (sem varredura de datas).")
+            print(f"[VAGAS] Data especifica: '{normalized_start}'.")
+            start_index, end_index = 0, 1
+        else:
+            # Modo varredura: enumera todas as datas disponiveis no convenio.
+            # Reset de soup necessario pois dates_for_convenio usa postback parcial
+            # (EVENTTARGET=ddlConvenios) que deixa ViewState invalido para captcha.
+            dates = self.dates_for_convenio(convenio)
+            print(f"[VAGAS] Marcacao por varredura iniciada: {len(dates)} data(s) disponivel(is).")
+            self.soup = None
+            start_index = first_scan_date_index(dates, "")
+            end_index = len(dates)
+
         for scan_round in range(1, scan_rounds + 1):
             if confirmed >= quantidade:
                 break
@@ -1155,10 +1160,10 @@ class ProeisHTTP:
                 _log("VAGA", f"Rodada de varredura {scan_round}/{scan_rounds}.")
 
             date_index = start_index if scan_round == 1 else 0
-            scan_end = end_index if start_date else len(dates)
+            scan_end = end_index
             while date_index < scan_end and confirmed < quantidade:
                 _, label = dates[date_index]
-                _log("VAGA", f"Testando data: '{label}' (indice {date_index + 1}/{len(dates)})...")
+                _log("VAGA", f"Testando data: '{label}' ({date_index + 1}/{len(dates)})...")
                 self.navigate_to_service_page()
                 self.fill_filters(convenio, label, cpa, prefer=prefer)
                 candidates = self.available_candidates(self.require_soup(), prefer)
