@@ -181,13 +181,13 @@ def norm_match(value: str | None) -> str:
 
 
 def _time_tokens(value: str | None) -> set[str]:
-    text = norm_match(value)
+    text = norm(value)
     if not text:
         return set()
     tokens: set[str] = set()
-    for h, m in re.findall(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text):
-        tokens.add(f"{int(h):02d}:{int(m):02d}")
     for h, m, _ in re.findall(r"\b([0-2]?\d):([0-5]\d):([0-5]\d)\b", text):
+        tokens.add(f"{int(h):02d}:{int(m):02d}")
+    for h, m in re.findall(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text):
         tokens.add(f"{int(h):02d}:{int(m):02d}")
     return tokens
 

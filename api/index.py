@@ -1150,6 +1150,7 @@ def _trigger_warmup_login() -> None:
 @app.get("/api/session-status")
 def session_status():
     """Retorna status da sessao persistida: {logged_in, user_name, saved_at}.
+    Se houver sessao salva, valida no PROEIS para manter a sessao viva enquanto o painel estiver aberto.
     Se nao houver sessao valida, dispara login em background para pre-aquecer."""
     load_env_file()
     try:
@@ -1158,18 +1159,31 @@ def session_status():
             _trigger_warmup_login()
             return {"logged_in": False, "user_name": "", "saved_at": ""}
         data = doc.to_dict() or {}
-        saved_at = data.get("saved_at")
-        # Verifica se sessao ainda esta dentro do TTL de 4h
-        if saved_at:
-            try:
-                age_s = (datetime.utcnow() - saved_at.replace(tzinfo=None)).total_seconds()
-                if age_s >= 14400:
-                    _trigger_warmup_login()
-                    return {"logged_in": False, "user_name": "", "saved_at": ""}
-            except Exception:
-                pass
-        saved_at_str = str(saved_at) if saved_at else ""
-        return {"logged_in": True, "user_name": data.get("user_name", ""), "saved_at": saved_at_str}
+        login_val = os.getenv("PROEIS_LOGIN", "")
+        password_val = os.getenv("PROEIS_PASSWORD", "")
+        gemini_key = os.getenv("GEMINI_API_KEY", "")
+        if not (login_val and password_val and gemini_key):
+            return {
+                "logged_in": bool(data.get("cookies")),
+                "user_name": data.get("user_name", ""),
+                "saved_at": str(data.get("saved_at") or ""),
+            }
+
+        client = ProeisHTTP(
+            login=login_val,
+            password=password_val,
+            twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+            gemini_api_key=gemini_key,
+            debug=False,
+        )
+        if _try_restore_session(client):
+            user_name = data.get("user_name", "") or login_val
+            saved_at = datetime.now(timezone.utc).isoformat()
+            _session_collection().document("current").update({"saved_at": saved_at})
+            return {"logged_in": True, "user_name": user_name, "saved_at": saved_at}
+
+        _trigger_warmup_login()
+        return {"logged_in": False, "user_name": "", "saved_at": ""}
     except Exception:
         return {"logged_in": False, "user_name": "", "saved_at": ""}
 
