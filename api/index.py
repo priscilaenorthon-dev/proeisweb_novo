@@ -233,6 +233,7 @@ def _run_event_once(body: RunRequest) -> dict[str, Any]:
         turno=body.turno,
         endereco=body.endereco,
     )
+    _resave_current_session(client)
     return {
         "status": "confirmado" if confirmed >= body.quantidade else "pendente",
         "confirmed": confirmed,
@@ -386,8 +387,19 @@ def _session_collection():
 def _save_session(client: ProeisHTTP, user_name: str) -> None:
     """Salva cookies e nome do usuario no Firestore para reutilizacao na proxima operacao."""
     try:
+        cookies = [
+            {
+                "name": cookie.name,
+                "value": cookie.value,
+                "domain": cookie.domain,
+                "path": cookie.path,
+                "secure": cookie.secure,
+                "expires": cookie.expires,
+            }
+            for cookie in client.session.cookies
+        ]
         _session_collection().document("current").set({
-            "cookies": dict(client.session.cookies),
+            "cookies": cookies,
             "user_name": user_name,
             "login": client.login,
             "saved_at": datetime.now(timezone.utc).isoformat(),
@@ -406,8 +418,20 @@ def _load_session(client: ProeisHTTP) -> dict:
         data = doc.to_dict() or {}
         if data.get("login", "") != client.login:
             return {"valid": False, "user_name": ""}
-        for name, value in (data.get("cookies") or {}).items():
-            client.session.cookies.set(name, value)
+        cookies = data.get("cookies") or []
+        if isinstance(cookies, dict):  # formato antigo: {"ASP.NET_SessionId": "..."}
+            for name, value in cookies.items():
+                client.session.cookies.set(name, value)
+        else:
+            for cookie in cookies:
+                if not isinstance(cookie, dict):
+                    continue
+                client.session.cookies.set(
+                    cookie.get("name", ""),
+                    cookie.get("value", ""),
+                    domain=cookie.get("domain") or None,
+                    path=cookie.get("path") or "/",
+                )
         return {"valid": True, "user_name": data.get("user_name", "")}
     except Exception as exc:
         print(f"[SESSION] Erro ao carregar sessao: {exc}")
@@ -423,6 +447,7 @@ def _try_restore_session(client: ProeisHTTP) -> bool:
         if client.check_auth():
             user = result["user_name"] or client.login
             print(f"[SESSION] Sessao restaurada para '{user}' (login ignorado).")
+            _save_session(client, user)
             return True
         print("[SESSION] Cookies carregados mas sessao invalida no servidor.")
         return False
@@ -454,6 +479,15 @@ def _fetch_user_name_and_save(client: ProeisHTTP) -> None:
         _save_session(client, nome)
     except Exception as exc:
         print(f"[SESSION] Aviso: nao salvou sessao apos login: {exc}")
+
+
+def _resave_current_session(client: ProeisHTTP) -> None:
+    try:
+        doc = _session_collection().document("current").get()
+        data = (doc.to_dict() or {}) if doc.exists else {}
+        _save_session(client, data.get("user_name", "") or client.login)
+    except Exception as exc:
+        print(f"[SESSION] Aviso: nao foi possivel atualizar sessao atual: {exc}")
 
 
 def _event_payload(body: RunRequest) -> dict[str, Any]:
@@ -853,6 +887,7 @@ async def run_automation(body: RunRequest):
                 turno=body.turno,
                 endereco=body.endereco,
             )
+            _resave_current_session(client)
             result["status"] = "confirmado" if confirmed >= body.quantidade else "pendente"
             result["confirmed"] = confirmed
 
@@ -981,6 +1016,7 @@ async def list_vagas(body: ListVagasRequest):
             else:
                 total = client.list_all_available_dates(body.convenio, body.cpa)
 
+            _resave_current_session(client)
             result["total"] = total
 
         except AutomationError as exc:
