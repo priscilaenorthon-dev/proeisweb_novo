@@ -649,7 +649,7 @@ class ProeisHTTP:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
         primary = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "2"))
+        fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "1"))
         fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-2.5-pro").strip()
         if fallback_model and self.bad_captcha_reports >= fallback_after:
             if primary != fallback_model:
@@ -770,6 +770,8 @@ class ProeisHTTP:
         max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "32"))
         if thinking_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
             max_output_tokens = thinking_budget + 64
+        elif "2.5-pro" in model_lc and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
+            max_output_tokens = int(os.getenv("GEMINI_PRO_MAX_OUTPUT_TOKENS", "2048"))
         payload = {
             "contents": [{
                 "parts": parts
