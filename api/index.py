@@ -170,13 +170,13 @@ def _parse_servicos(raw: str) -> list[dict]:
 
 
 def _apply_runtime_options(body: RunRequest) -> None:
-    if body.http_attempts > 0:
+    if getattr(body, "http_attempts", 0) > 0:
         os.environ["PROEIS_HTTP_ATTEMPTS"] = str(body.http_attempts)
-    if body.connect_timeout > 0:
+    if getattr(body, "connect_timeout", 0) > 0:
         os.environ["PROEIS_CONNECT_TIMEOUT"] = str(body.connect_timeout)
-    if body.read_timeout > 0:
+    if getattr(body, "read_timeout", 0) > 0:
         os.environ["PROEIS_READ_TIMEOUT"] = str(body.read_timeout)
-    if body.filter_max_attempts > 0:
+    if getattr(body, "filter_max_attempts", 0) > 0:
         os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
     if getattr(body, "captcha_invalid_retries", 0) > 0:
         os.environ["TWOCAPTCHA_INVALID_RETRIES"] = str(body.captcha_invalid_retries)
@@ -188,7 +188,7 @@ def _apply_runtime_options(body: RunRequest) -> None:
         os.environ["PROEIS_AUTO_RETRY_ROUNDS"] = str(body.auto_retry_rounds)
     if getattr(body, "auto_retry_wait_seconds", 0) > 0:
         os.environ["PROEIS_AUTO_RETRY_WAIT_SECONDS"] = str(body.auto_retry_wait_seconds)
-    if body.gemini_model:
+    if getattr(body, "gemini_model", ""):
         os.environ["GEMINI_MODEL"] = body.gemini_model
 
 
@@ -595,6 +595,7 @@ class TestLoginRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
+    twocaptcha_key: str = ""
 
 
 @app.get("/api/health")
@@ -677,7 +678,7 @@ async def test_login(body: TestLoginRequest):
         client = ProeisHTTP(
             login=login_val,
             password=pwd_val,
-            twocaptcha_key="",
+            twocaptcha_key=body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", ""),
             gemini_api_key=gemini_key,
             debug=False,
         )
@@ -709,6 +710,8 @@ async def test_login(body: TestLoginRequest):
             h = soup.select_one("h1, h2, h3")
             if h:
                 nome = h.get_text(strip=True)[:80]
+
+        _save_session(client, nome or login_val)
 
         return {
             "ok": True,
@@ -1487,6 +1490,47 @@ def session_keepalive(x_scheduler_secret: str = Header(default="")):
         return {"ok": True, "status": "renovada", "user_name": user_name}
     except Exception as exc:
         print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
+        return {"ok": False, "status": "erro", "message": str(exc)}
+
+
+@app.post("/api/session-keepalive-web")
+def session_keepalive_web(body: TestLoginRequest):
+    """Mantem a sessao ativa a partir do painel web usando as credenciais da tela de login."""
+    load_env_file()
+    login_val = body.login or os.getenv("PROEIS_LOGIN", "")
+    password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
+
+    if not login_val or not password_val or not gemini_key:
+        return {"ok": False, "status": "sem_credenciais"}
+
+    try:
+        with _env_lock:
+            _apply_runtime_options(body)
+            client = ProeisHTTP(
+                login=login_val,
+                password=password_val,
+                twocaptcha_key=twocaptcha,
+                gemini_api_key=gemini_key,
+                debug=False,
+            )
+
+        if _try_restore_session(client):
+            doc = _session_collection().document("current").get()
+            user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+            _session_collection().document("current").update({
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            })
+            return {"ok": True, "status": "ativa", "user_name": user_name}
+
+        login_with_retries(client, "Keepalive via painel web")
+        _fetch_user_name_and_save(client)
+        doc = _session_collection().document("current").get()
+        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
+        return {"ok": True, "status": "renovada", "user_name": user_name}
+    except Exception as exc:
+        print(f"[KEEPALIVE] Erro no keepalive web: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
 
 

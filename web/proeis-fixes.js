@@ -394,6 +394,7 @@
   window.saveSettings = function saveSettingsV2() {
     const readInt = id => parseInt(document.getElementById(id)?.value, 10) || 0;
     const s = {
+      ...storage.getSettings(),
       login: document.getElementById('s-login')?.value || '',
       password: document.getElementById('s-password')?.value || '',
       gemini_api_key: document.getElementById('s-gemini')?.value || '',
