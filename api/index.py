@@ -1153,6 +1153,8 @@ async def run_batch_fast(body: BatchRunRequest):
 async def list_vagas(body: ListVagasRequest):
     load_env_file()
     _clean_request_text(body)
+    if body.filter_max_attempts < 8:
+        body.filter_max_attempts = 8
 
     login_val = body.login or os.getenv("PROEIS_LOGIN", "")
     password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
