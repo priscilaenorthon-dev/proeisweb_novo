@@ -7,6 +7,7 @@ import re
 import secrets
 import sys
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,8 @@ from proeis_http import (  # noqa: E402
     load_env_file,
     login_with_retries,
     reparar_mojibake,
+    run_batch_events,
+    wait_for_target_time,
 )
 
 app = FastAPI(title="PROEIS Bot API", version="1.0.0")
@@ -74,6 +77,33 @@ class RunRequest(BaseModel):
 
 class SchedulerRunRequest(BaseModel):
     events: list[RunRequest] = []
+
+
+class BatchRunRequest(BaseModel):
+    events: list[RunRequest] = []
+    horario: str = ""
+    fast_mode: bool = True
+    batch_window_seconds: int = 0
+    batch_repeat_pause_seconds: int = 1
+    batch_max_no_action_rounds: int = 2
+    recovery_window_seconds: int = 0
+    scan_rounds: int = 1
+
+    # Credenciais/configuracoes compartilhadas do lote.
+    login: str = ""
+    password: str = ""
+    gemini_api_key: str = ""
+    twocaptcha_key: str = ""
+    gemini_model: str = ""
+    http_attempts: int = 0
+    connect_timeout: int = 0
+    read_timeout: int = 0
+    filter_max_attempts: int = 0
+    captcha_invalid_retries: int = 0
+    captcha_refresh_after_invalids: int = 0
+    gemini_timeout: int = 0
+    auto_retry_rounds: int = 0
+    auto_retry_wait_seconds: int = 0
 
 
 class EventListResponse(BaseModel):
@@ -496,6 +526,16 @@ def _event_payload(body: RunRequest) -> dict[str, Any]:
     data["quantidade"] = int(data.get("quantidade") or 1)
     data["scan_rounds"] = int(data.get("scan_rounds") or 1)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    return data
+
+
+def _batch_event_payload(event: RunRequest) -> dict[str, Any]:
+    _clean_request_text(event)
+    data = event.model_dump()
+    data["quantidade"] = max(1, int(data.get("quantidade") or 1))
+    data["scan_rounds"] = max(1, int(data.get("scan_rounds") or 1))
+    for key in ("convenio", "data_evento", "cpa", "disponivel", "nome_evento", "hora_evento", "turno", "endereco"):
+        data[key] = _clean_text(data.get(key, ""))
     return data
 
 
@@ -929,6 +969,174 @@ async def run_automation(body: RunRequest):
                     yield ": keep-alive\n\n"
         finally:
             yield _sse_data({"type": "done", **result})
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/run-batch-fast")
+async def run_batch_fast(body: BatchRunRequest):
+    load_env_file()
+
+    login_val = body.login or os.getenv("PROEIS_LOGIN", "")
+    password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
+    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
+
+    op_id = uuid.uuid4().hex[:8]
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result: dict[str, Any] = {
+        "status": "pendente",
+        "message": "",
+        "op_id": op_id,
+        "confirmed": 0,
+        "total": len(body.events),
+    }
+    perf: dict[str, int] = {}
+    loop = asyncio.get_event_loop()
+    aqueue: asyncio.Queue = asyncio.Queue()
+
+    def emit(msg: Optional[dict]) -> None:
+        loop.call_soon_threadsafe(aqueue.put_nowait, msg)
+
+    def _run() -> None:
+        _LOGS_DIR.mkdir(exist_ok=True)
+        log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run_batch_fast.log"
+        log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        log_lines: list[str] = []
+        cap = _Capture(emit, log_file, log_lines)
+        _thread_local.capture = cap
+        t_total = time.monotonic()
+        try:
+            if not body.events:
+                raise AutomationError("Nenhum evento informado para execucao em lote.")
+            if not login_val:
+                raise AutomationError("Login nao configurado. Va em Configuracoes.")
+            if not password_val:
+                raise AutomationError("Senha nao configurada. Va em Configuracoes.")
+            if not gemini_key:
+                raise AutomationError("GEMINI_API_KEY nao configurada. Va em Configuracoes.")
+
+            events = [_batch_event_payload(event) for event in body.events]
+            missing = [
+                i + 1
+                for i, event in enumerate(events)
+                if not event.get("convenio") or not event.get("cpa")
+            ]
+            if missing:
+                raise AutomationError(f"Eventos sem convenio/CPA: {missing}.")
+
+            events.sort(key=lambda ev: (
+                ev.get("convenio", ""),
+                ev.get("data_evento", ""),
+                ev.get("cpa", ""),
+                ev.get("disponivel", ""),
+                ev.get("hora_evento", ""),
+                ev.get("nome_evento", ""),
+            ))
+
+            print(f"[OP] Batch rapido iniciado: id={op_id} | eventos={len(events)} | horario={body.horario or '-'}")
+            complete = sum(1 for ev in events if ev.get("data_evento"))
+            print(f"[INFO] Modo rapido: {complete}/{len(events)} evento(s) com data definida; eventos sem data podem cair em varredura.")
+
+            with _env_lock:
+                _apply_runtime_options(body)
+                client = ProeisHTTP(
+                    login=login_val,
+                    password=password_val,
+                    twocaptcha_key=twocaptcha,
+                    gemini_api_key=gemini_key,
+                )
+
+            t_session = time.monotonic()
+            _warmup_event.wait(timeout=30)
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via batch rapido")
+                _fetch_user_name_and_save(client)
+            perf["session_ms"] = int((time.monotonic() - t_session) * 1000)
+            print(f"[PERF] session_ms={perf['session_ms']}")
+
+            horario = (body.horario or "").strip()
+            if horario:
+                horario = re.sub(r"\.(\d{1,3})$", "", horario)
+                first = events[0]
+                print(f"[INFO] Execucao agendada armada para {horario}; preparando antes do horario alvo.")
+                t_wait = time.monotonic()
+                wait_for_target_time(
+                    horario,
+                    client=client,
+                    prefill_convenio=first.get("convenio", ""),
+                    prefill_date=first.get("data_evento", ""),
+                )
+                perf["scheduled_wait_ms"] = int((time.monotonic() - t_wait) * 1000)
+                print(f"[PERF] scheduled_wait_ms={perf['scheduled_wait_ms']}")
+
+            t_batch = time.monotonic()
+            confirmed = run_batch_events(
+                client,
+                events,
+                dry_run=False,
+                scan_rounds=max(1, int(body.scan_rounds or 1)),
+                recovery_window_seconds=max(0, int(body.recovery_window_seconds or 0)),
+                batch_window_seconds=max(0, int(body.batch_window_seconds or 0)),
+                batch_repeat_pause_seconds=max(0, int(body.batch_repeat_pause_seconds or 1)),
+                batch_max_no_action_rounds=max(0, int(body.batch_max_no_action_rounds or 2)),
+            )
+            perf["batch_ms"] = int((time.monotonic() - t_batch) * 1000)
+            print(f"[PERF] batch_ms={perf['batch_ms']}")
+
+            _resave_current_session(client)
+            result["confirmed"] = confirmed
+            result["status"] = "confirmado" if confirmed > 0 else "pendente"
+            result["message"] = ""
+
+        except AutomationError as exc:
+            result["status"] = "erro"
+            result["message"] = str(exc)
+        except Exception as exc:
+            result["status"] = "erro"
+            result["message"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            perf["total_ms"] = int((time.monotonic() - t_total) * 1000)
+            print(f"[PERF] total_ms={perf['total_ms']}")
+            print(f"[OP] Batch rapido encerrado: status={result['status']} | log={log_path.name}")
+            _save_operation_log(op_id, "run_batch_fast", result["status"], log_lines, log_path.name, result)
+            _thread_local.capture = None
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            emit(None)
+
+    async def _stream():
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        yield _SSE_PADDING
+        elapsed_idle = 0
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
+                    elapsed_idle = 0
+                    if item is None:
+                        break
+                    yield _sse_data(item)
+                except asyncio.TimeoutError:
+                    elapsed_idle += 3
+                    if elapsed_idle >= 120 and not body.horario:
+                        aviso = "[AVISO] Operacao excedeu 2 min sem resposta. Verifique conexao ou timeouts."
+                        yield _sse_data({"type": "log", "line": aviso})
+                        break
+                    yield ": keep-alive\n\n"
+        finally:
+            yield _sse_data({"type": "done", **result, "perf": perf})
 
     return StreamingResponse(
         _stream(),

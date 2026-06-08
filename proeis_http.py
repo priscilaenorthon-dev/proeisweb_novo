@@ -721,6 +721,7 @@ class ProeisHTTP:
         b64 = base64.b64encode(processed).decode("ascii")
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        thinking_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "512")) if "flash" in model.lower() else 0
         payload = {
             "contents": [{
                 "parts": [
@@ -744,9 +745,11 @@ class ProeisHTTP:
             "generationConfig": {
                 "temperature": 0.0,
                 "maxOutputTokens": 32,
-                "thinkingConfig": {"thinkingBudget": 0},
+                "thinkingConfig": {"thinkingBudget": thinking_budget},
             },
         }
+        if thinking_budget:
+            _log("CAPTCHA", f"[Gemini] thinkingBudget={thinking_budget} ativado para {model}.")
 
         timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
         max_429_retries = 2
