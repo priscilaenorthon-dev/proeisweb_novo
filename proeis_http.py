@@ -344,7 +344,7 @@ class ProeisHTTP:
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
         _op_start()
-        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro") if gemini_api_key else "nenhum"
+        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
 
     # â"€â"€ HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -647,7 +647,7 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-pro")
+        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
         secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash")
 
         if primary == secondary:
@@ -714,7 +714,7 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         processed = _preprocess_captcha_image(image)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
