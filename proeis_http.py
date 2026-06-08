@@ -722,6 +722,9 @@ class ProeisHTTP:
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         thinking_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "512")) if "flash" in model.lower() else 0
+        max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "32"))
+        if thinking_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
+            max_output_tokens = thinking_budget + 32
         payload = {
             "contents": [{
                 "parts": [
@@ -744,7 +747,7 @@ class ProeisHTTP:
             }],
             "generationConfig": {
                 "temperature": 0.0,
-                "maxOutputTokens": 32,
+                "maxOutputTokens": max_output_tokens,
                 "thinkingConfig": {"thinkingBudget": thinking_budget},
             },
         }
