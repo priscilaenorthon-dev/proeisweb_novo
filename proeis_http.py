@@ -311,7 +311,8 @@ class ProeisHTTP:
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
         _op_start()
-        _log("INFO", f"Solver ativo: {'Gemini 2.5 Flash-Lite' if gemini_api_key else 'nenhum'}")
+        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro") if gemini_api_key else "nenhum"
+        _log("INFO", f"Solver ativo: {_model}")
 
     # â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
