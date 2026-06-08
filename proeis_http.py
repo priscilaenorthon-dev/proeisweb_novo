@@ -345,7 +345,7 @@ class ProeisHTTP:
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
         _op_start()
-        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if gemini_api_key else "nenhum"
+        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
 
     # â"€â"€ HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -648,7 +648,7 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        primary = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
         fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "1"))
         fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-2.5-pro").strip()
         if fallback_model and self.bad_captcha_reports >= fallback_after:
@@ -727,22 +727,11 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
         processed = _preprocess_captcha_image(image)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
         parts: list[dict[str, Any]] = [
-            {
-                "text": (
-                    "Read this PROEIS CAPTCHA. It has EXACTLY 6 uppercase hexadecimal characters.\n"
-                    "Allowed characters only: 0 1 2 3 4 5 6 7 8 9 A B C D E F.\n"
-                    "The first image is original. If a second image is present, it is the same captcha enhanced for OCR.\n"
-                    "Compare both images and return the best visual reading.\n"
-                    "Common confusions: O/Q -> 0, I/L -> 1, S -> 5, G -> 6, Z -> 2.\n"
-                    "Never answer with placeholders like ABCDEF. Never add spaces, punctuation, JSON or explanation.\n"
-                    "Return ONLY the 6 characters."
-                )
-            },
             {
                 "inline_data": {
                     "mime_type": "image/png",
@@ -759,6 +748,19 @@ class ProeisHTTP:
                     }
                 }
             )
+        parts.append(
+            {
+                "text": (
+                    "Read this PROEIS CAPTCHA. It has EXACTLY 6 uppercase hexadecimal characters.\n"
+                    "Allowed characters only: 0 1 2 3 4 5 6 7 8 9 A B C D E F.\n"
+                    "The first image is original. If a second image is present, it is the same captcha enhanced for OCR.\n"
+                    "Compare both images and return the best visual reading.\n"
+                    "Common confusions: O/Q -> 0, I/L -> 1, S -> 5, G -> 6, Z -> 2.\n"
+                    "Never answer with placeholders like ABCDEF. Never add spaces, punctuation, JSON or explanation.\n"
+                    "Return ONLY the 6 characters."
+                )
+            }
+        )
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         thinking_budget: int | None = None
