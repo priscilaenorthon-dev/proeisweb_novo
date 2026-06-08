@@ -1858,9 +1858,7 @@ async function _keepSessionAlive() {
 
 function startSessionKeepAlive(runNow = false) {
   if (_sessionKeepAliveTimer) clearInterval(_sessionKeepAliveTimer);
-  _sessionKeepAliveTimer = setInterval(() => {
-    if (!document.hidden) _keepSessionAlive();
-  }, 45000);
+  _sessionKeepAliveTimer = setInterval(() => _keepSessionAlive(), 45000);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) _keepSessionAlive();
   });
