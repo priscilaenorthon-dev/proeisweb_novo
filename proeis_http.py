@@ -1,4 +1,4 @@
-﻿import argparse
+import argparse
 import atexit
 import base64
 import json
@@ -23,6 +23,39 @@ try:
 except ImportError:
     pass
 
+try:
+    import io as _io
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
+
+def _preprocess_captcha_image(image_bytes: bytes) -> bytes:
+    if not _PIL_AVAILABLE:
+        return image_bytes
+    try:
+        img = Image.open(_io.BytesIO(image_bytes))
+        if img.mode == "RGBA":
+            bg = Image.new("RGB", img.size, (255, 255, 255))
+            bg.paste(img, mask=img.split()[3])
+            img = bg
+        else:
+            img = img.convert("RGB")
+        img = img.convert("L")
+        img = ImageOps.autocontrast(img, cutoff=5)
+        img = img.filter(ImageFilter.SHARPEN)
+        img = img.filter(ImageFilter.SHARPEN)
+        w, h = img.size
+        if w < 300:
+            img = img.resize((w * 2, h * 2), Image.LANCZOS)
+        img = img.convert("RGB")
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue()
+    except Exception:
+        return image_bytes
+
 
 try:
     sys.stdout.reconfigure(line_buffering=True)
@@ -33,7 +66,7 @@ LOG_DIR = Path("logs")
 _LOG_FILE_HANDLE = None
 
 
-# â”€â”€ Logger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Logger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 _OP = threading.local()
 
@@ -64,7 +97,7 @@ def _phase(name: str) -> None:
     print(f"[{ts}]{_op_elapsed()} [{'─'*9}] ══ {name} ══")
 
 
-# â”€â”€ Tee (stdout + arquivo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Tee (stdout + arquivo) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class _Tee:
     """Escreve simultaneamente em mÃºltiplos streams (ex: stdout + arquivo de log)."""
@@ -115,7 +148,7 @@ def _close_log_file() -> None:
 atexit.register(_close_log_file)
 
 
-# â”€â”€ URLs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ URLs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 BASE_URL = "https://www.proeis.rj.gov.br/"
 DEFAULT_URL = urljoin(BASE_URL, "Default.aspx")
@@ -285,7 +318,7 @@ def emit_vaga(label: str, data_evento: str = "", acao: str = "Visualizacao") -> 
     }, ensure_ascii=False))
 
 
-# â”€â”€ Cliente HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Cliente HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class ProeisHTTP:
     def __init__(self, login: str, password: str, twocaptcha_key: str, gemini_api_key: str = "", debug: bool = True):
@@ -314,7 +347,7 @@ class ProeisHTTP:
         _model = os.getenv("GEMINI_MODEL", "gemini-2.5-pro") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
 
-    # â”€â”€ HTTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def reset_session(self) -> None:
         _log("HTTP", "Recriando sessao HTTP local.")
@@ -438,7 +471,7 @@ class ProeisHTTP:
         payload["__EVENTARGUMENT"] = argument
         return self.post_form(payload)
 
-    # â”€â”€ Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Login â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def login_flow(self) -> None:
         _phase("FASE 1/4: LOGIN")
@@ -512,7 +545,7 @@ class ProeisHTTP:
                 return self.password[:limit]
         return self.password
 
-    # â”€â”€ Captcha â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Captcha â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def extract_captcha_image(self, soup: BeautifulSoup) -> bytes:
         _log("CAPTCHA", "Procurando imagem de captcha no HTML da pagina...")
@@ -681,34 +714,37 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv(“GEMINI_MODEL”, “gemini-2.5-pro”)
-        b64 = base64.b64encode(image).decode(“ascii”)
-        _log(“CAPTCHA”, f”[Gemini] Enviando imagem para {model}...”)
-        url = f”https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent”
+        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
+        processed = _preprocess_captcha_image(image)
+        if len(processed) != len(image):
+            _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
+        b64 = base64.b64encode(processed).decode("ascii")
+        _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         payload = {
-            “contents”: [{
-                “parts”: [
+            "contents": [{
+                "parts": [
                     {
-                        “inline_data”: {
-                            “mime_type”: “image/png”,
-                            “data”: b64,
+                        "inline_data": {
+                            "mime_type": "image/png",
+                            "data": b64,
                         }
                     },
                     {
-                        “text”: (
-                            “This is a CAPTCHA image. Read the EXACTLY 6 characters shown.\n”
-                            “ONLY these characters are valid: 0 1 2 3 4 5 6 7 8 9 A B C D E F\n”
-                            “Disambiguation (these letters NEVER appear -- replace with the digit):\n”
-                            “  O -> 0  |  I or L -> 1  |  S -> 5  |  G -> 6  |  Z -> 2  |  Q -> 0\n”
-                            “Reply with ONLY the 6 characters. No spaces. No explanation.”
+                        "text": (
+                            "This is a CAPTCHA image. Read the EXACTLY 6 characters shown.\n"
+                            "ONLY these characters are valid: 0 1 2 3 4 5 6 7 8 9 A B C D E F\n"
+                            "Disambiguation (these letters NEVER appear -- replace with the digit):\n"
+                            "  O -> 0  |  I or L -> 1  |  S -> 5  |  G -> 6  |  Z -> 2  |  Q -> 0\n"
+                            "Reply with ONLY the 6 characters. No spaces. No explanation."
                         )
                     },
                 ]
             }],
-            “generationConfig”: {
-                “temperature”: 0.0,
-                “maxOutputTokens”: 32,
-                “thinkingConfig”: {“thinkingBudget”: 0},
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 32,
+                "thinkingConfig": {"thinkingBudget": 0},
             },
         }
 
@@ -833,7 +869,7 @@ class ProeisHTTP:
         _log("CAPTCHA", "Solicitando nova imagem via postback...")
         return self.post_form(payload)
 
-    # â”€â”€ NavegaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ NavegaÃ§Ã£o â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def _try_navigate_to_service_page(self) -> bool:
         _phase("FASE 2/4: NAVEGAÇÃO")
@@ -890,7 +926,7 @@ class ProeisHTTP:
 
     def navigate_to_service_page(self) -> None:
         # Se ja estamos na tela de filtros (ex: apos um "Eu Vou" confirmado),
-        # nao volta ao menu â€” evita passar por FrmVoluntarioInscricoesConsultar
+        # nao volta ao menu - evita passar por FrmVoluntarioInscricoesConsultar
         # que altera o VIEWSTATE e faz o site retornar 0 resultados.
         if self.soup is not None and self.has_service_fields(self.soup):
             _log("NAV", "Ja na tela de servicos (FrmEventoAssociar). Reutilizando para proxima marcacao.")
@@ -899,7 +935,7 @@ class ProeisHTTP:
         if self._try_navigate_to_service_page():
             return
 
-        # Navegacao falhou â€” pagina em estado inconsistente. Refaz login e tenta novamente.
+        # Navegacao falhou - pagina em estado inconsistente. Refaz login e tenta novamente.
         _log("NAV", "Navegacao falhou; refazendo login para limpar estado da sessao...")
         self.login_flow()
         if self._try_navigate_to_service_page():
@@ -958,7 +994,7 @@ class ProeisHTTP:
         text = norm(soup.get_text(" ", strip=True))
         return ("convenio" in text or "convÃªnio" in text) and ("cpa" in text or "data do evento" in text)
 
-    # â”€â”€ Filtros â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Filtros â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def fill_filters(self, convenio: str, data_evento: str, cpa: str, prefer: str = "nao-reserva") -> None:
         _phase("FASE 3/4: FILTROS")
@@ -1454,7 +1490,7 @@ class ProeisHTTP:
         tag = soup.select_one(f'[name="{name}"]')
         return tag.get("value", "") if tag else ""
 
-    # â”€â”€ Escolha de vagas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Escolha de vagas â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
     def choose_available(self, prefer: str, dry_run: bool, data_evento: str = "") -> None:
         soup = self.require_soup()
@@ -1904,7 +1940,7 @@ class ProeisHTTP:
         return success
 
 
-# â”€â”€ Helpers globais â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Helpers globais â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 def required_env(name: str) -> str:
     value = os.getenv(name)
@@ -1976,7 +2012,7 @@ def print_timing_summary(client: ProeisHTTP, started_at: float) -> None:
     )
 
 
-# â”€â”€ CLI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ CLI â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Automacao HTTP puro PROEIS.")
@@ -1994,7 +2030,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--list-all-dates", action="store_true", help="Lista vagas de todas as datas disponiveis para o convenio/CPA, sem clicar em Eu Vou.")
     parser.add_argument("--no-debug", action="store_true")
     parser.add_argument("--scan-rounds", type=int, default=1, help="Quantidade de rodadas de varredura quando a data do evento estiver vazia.")
-    parser.add_argument("--wait-until", default="", help="HH:MM:SS â€” aguarda ate esse horario para iniciar login/captcha e marcar.")
+    parser.add_argument("--wait-until", default="", help="HH:MM:SS - aguarda ate esse horario para iniciar login/captcha e marcar.")
     parser.add_argument("--batch-events", default="", help="JSON com a lista de eventos preparada pela interface.")
     parser.add_argument(
         "--batch-independent",
