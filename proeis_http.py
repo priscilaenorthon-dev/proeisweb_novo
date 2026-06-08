@@ -712,9 +712,9 @@ class ProeisHTTP:
 
         timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
         max_429_retries = 2
-        max_5xx_retries = int(os.getenv("GEMINI_5XX_RETRIES", "2"))
+        max_5xx_retries = int(os.getenv("GEMINI_5XX_RETRIES", "4"))
         retry_wait_429 = 62
-        retry_wait_5xx = int(os.getenv("GEMINI_5XX_WAIT", "2"))  # initial backoff for 5xx; doubles each attempt
+        retry_wait_5xx = int(os.getenv("GEMINI_5XX_WAIT", "8"))  # initial backoff for 5xx; doubles each attempt
 
         total_attempts = max(max_429_retries, max_5xx_retries)
         _5xx_attempt = 0
