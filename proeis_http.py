@@ -327,6 +327,7 @@ class ProeisHTTP:
         self.twocaptcha_key = twocaptcha_key
         self.gemini_api_key = gemini_api_key
         self.debug = debug
+        self.bad_captcha_reports = 0
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -647,8 +648,20 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
-        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash")
+        primary = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "2"))
+        fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-2.5-pro").strip()
+        if fallback_model and self.bad_captcha_reports >= fallback_after:
+            if primary != fallback_model:
+                _log(
+                    "CAPTCHA",
+                    f"Site recusou {self.bad_captcha_reports} captcha(s); usando fallback de maior acerto: {fallback_model}.",
+                )
+            primary = fallback_model
+
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "").strip()
+        if not secondary:
+            secondary = primary
 
         if primary == secondary:
             result = self._solve_via_gemini_result(image, model=primary)
@@ -718,39 +731,56 @@ class ProeisHTTP:
         processed = _preprocess_captcha_image(image)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
-        b64 = base64.b64encode(processed).decode("ascii")
+        parts: list[dict[str, Any]] = [
+            {
+                "text": (
+                    "Read this PROEIS CAPTCHA. It has EXACTLY 6 uppercase hexadecimal characters.\n"
+                    "Allowed characters only: 0 1 2 3 4 5 6 7 8 9 A B C D E F.\n"
+                    "The first image is original. If a second image is present, it is the same captcha enhanced for OCR.\n"
+                    "Compare both images and return the best visual reading.\n"
+                    "Common confusions: O/Q -> 0, I/L -> 1, S -> 5, G -> 6, Z -> 2.\n"
+                    "Never answer with placeholders like ABCDEF. Never add spaces, punctuation, JSON or explanation.\n"
+                    "Return ONLY the 6 characters."
+                )
+            },
+            {
+                "inline_data": {
+                    "mime_type": "image/png",
+                    "data": base64.b64encode(image).decode("ascii"),
+                }
+            },
+        ]
+        if processed != image:
+            parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": base64.b64encode(processed).decode("ascii"),
+                    }
+                }
+            )
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        thinking_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "512")) if "flash" in model.lower() else 0
+        thinking_budget: int | None = None
+        model_lc = model.lower()
+        if "flash" in model_lc:
+            thinking_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "1024"))
+        elif os.getenv("GEMINI_PRO_THINKING_BUDGET"):
+            thinking_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "0"))
         max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "32"))
         if thinking_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
-            max_output_tokens = thinking_budget + 32
+            max_output_tokens = thinking_budget + 64
         payload = {
             "contents": [{
-                "parts": [
-                    {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": b64,
-                        }
-                    },
-                    {
-                        "text": (
-                            "This is a CAPTCHA image. Read the EXACTLY 6 characters shown.\n"
-                            "ONLY these characters are valid: 0 1 2 3 4 5 6 7 8 9 A B C D E F\n"
-                            "Disambiguation (these letters NEVER appear -- replace with the digit):\n"
-                            "  O -> 0  |  I or L -> 1  |  S -> 5  |  G -> 6  |  Z -> 2  |  Q -> 0\n"
-                            "Reply with ONLY the 6 characters. No spaces. No explanation."
-                        )
-                    },
-                ]
+                "parts": parts
             }],
             "generationConfig": {
                 "temperature": 0.0,
                 "maxOutputTokens": max_output_tokens,
-                "thinkingConfig": {"thinkingBudget": thinking_budget},
             },
         }
+        if thinking_budget is not None:
+            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": thinking_budget}
         if thinking_budget:
             _log("CAPTCHA", f"[Gemini] thinkingBudget={thinking_budget} ativado para {model}.")
 
@@ -801,7 +831,7 @@ class ProeisHTTP:
         try:
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (KeyError, IndexError) as exc:
-            raise AutomationError(f"Gemini: resposta inesperada: {data}") from exc
+            raise CaptchaInvalidAnswerError("", f"Gemini sem texto: {data}") from exc
 
         text = normalize_captcha_answer(raw_text)
         _log("CAPTCHA", f"[Gemini] Resposta recebida: '{raw_text}' -> '{text}'")
@@ -827,7 +857,7 @@ class ProeisHTTP:
         return normalize_captcha_answer(value)
 
     def report_bad_captcha(self) -> None:
-        pass
+        self.bad_captcha_reports += 1
 
     def report_bad_captcha_id(self, captcha_id: str | None) -> None:
         pass
