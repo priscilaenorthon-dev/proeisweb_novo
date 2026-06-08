@@ -20,6 +20,11 @@ proeisweb_novo/
 │   └── styles.css          # CSS customizado (complementa Tailwind)
 ├── config/
 │   └── proeis_options.json # Lista de convênios e CPAs disponíveis
+├── deploy/
+│   ├── README.md                        # Ordem de execução e pré-requisitos
+│   ├── 01-set-min-instances.sh          # Elimina cold start (min-instances=1)
+│   ├── 02-set-scheduler-secret.sh       # Configura SCHEDULER_SECRET no Cloud Run
+│   └── 03-setup-keepalive-scheduler.sh  # Cria job keepalive (a cada 10 min)
 ├── logs/                   # Logs de operações (fallback local quando Firestore indisponível)
 ├── requirements.txt        # Dependências Python
 └── .env                    # Variáveis de ambiente (não versionado)
@@ -466,8 +471,8 @@ GEMINI_API_KEY=AIzaSy...
 
 ```env
 TWOCAPTCHA_API_KEY=          # Solver alternativo de captcha
-GEMINI_MODEL=gemini-2.5-flash-lite  # Padrão atual
-SCHEDULER_SECRET=secret123   # Obrigatório para /api/scheduler/run
+GEMINI_MODEL=gemini-2.5-flash       # Padrão atual
+SCHEDULER_SECRET=secret123   # Obrigatório para /api/scheduler/run e keepalive
 CORS_ORIGINS=*
 ```
 
@@ -580,7 +585,7 @@ O PROEIS exige captcha em **cada submissão de filtro** (uma por data pesquisada
 
 ### Solvers disponíveis
 
-1. **Gemini 2.5 Flash-Lite** (padrão, obrigatório) — visão computacional via Google AI Studio
+1. **Gemini 2.5 Flash** (padrão, obrigatório) — visão computacional via Google AI Studio
 2. **2Captcha** (opcional) — serviço pago, usado em paralelo
 
 ### Estratégia multi-solver
@@ -593,7 +598,11 @@ O PROEIS exige captcha em **cada submissão de filtro** (uma por data pesquisada
 
 ## Agendamento Automático (Cloud Scheduler)
 
-Configurado para disparar diariamente às **07:00 horário de Brasília** (10:00 UTC).
+Dois jobs independentes no Cloud Scheduler; ambos autenticados via `SCHEDULER_SECRET`.
+
+### Job 1 — Marcação de vagas (`/api/scheduler/run`)
+
+Dispara diariamente no horário configurado (ex: 07:00 Brasília).
 
 **Fluxo:**
 1. Cloud Scheduler → `POST /api/scheduler/run` com `x-scheduler-secret`
@@ -602,6 +611,21 @@ Configurado para disparar diariamente às **07:00 horário de Brasília** (10:00
 4. Marca vaga → salva resultado no Firestore com `kind=agendamento`
 
 **Importante:** Para 4 eventos em sequência, o 1º pode fazer login e os 3+ seguintes reutilizam a sessão salva. Os cookies são armazenados no Firestore entre eventos mesmo sendo em instâncias separadas.
+
+### Job 2 — Keepalive de sessão (`/api/session-keepalive`)
+
+Dispara a cada **10 minutos** para manter a sessão do PROEIS sempre viva no Firestore.
+
+**Por quê:** O servidor ASP.NET do PROEIS expira sessões após ~20 minutos de inatividade. Sem o keepalive, quase toda marcação manual paga o custo de login completo (~1,7s + captcha).
+
+**Fluxo:**
+1. Cloud Scheduler → `POST /api/session-keepalive` com `X-Scheduler-Secret`
+2. Carrega sessão do Firestore e valida com `check_auth()`
+3. Se sessão ainda válida: atualiza `saved_at` (renova TTL interno)
+4. Se sessão expirou: login completo → salva nova sessão
+5. Retorna `{"ok": true, "status": "ativa"|"renovada"}`
+
+**Configuração:** veja `deploy/03-setup-keepalive-scheduler.sh`. Scripts completos em `deploy/README.md`.
 
 ---
 
