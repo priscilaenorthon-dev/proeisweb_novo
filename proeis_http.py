@@ -681,33 +681,50 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
-        b64 = base64.b64encode(image).decode("ascii")
-        _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        model = model or os.getenv(“GEMINI_MODEL”, “gemini-2.5-pro”)
+        b64 = base64.b64encode(image).decode(“ascii”)
+        _log(“CAPTCHA”, f”[Gemini] Enviando imagem para {model}...”)
+        url = f”https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent”
         payload = {
-            "contents": [{
-                "parts": [
+            “system_instruction”: {
+                “parts”: [{
+                    “text”: (
+                        “You are a precise OCR system specialized in reading hexadecimal CAPTCHAs. “
+                        “Your output must be EXACTLY 6 uppercase hexadecimal characters. “
+                        “Valid characters: 0 1 2 3 4 5 6 7 8 9 A B C D E F — nothing else. “
+                        “Never output spaces, newlines, punctuation, or explanations.”
+                    )
+                }]
+            },
+            “contents”: [{
+                “parts”: [
                     {
-                        "inline_data": {
-                            "mime_type": "image/png",
-                            "data": b64,
+                        “inline_data”: {
+                            “mime_type”: “image/png”,
+                            “data”: b64,
                         }
                     },
                     {
-                        "text": (
-                            "This is a captcha image. "
-                            "Read EXACTLY 6 hexadecimal characters (uppercase A-F and digits 0-9 only). "
-                            "Do not use letters outside A-F. Be careful: distinguish 0 (zero) from O, 1 from I and L, 5 from S, 8 from B. "
-                            "Reply with ONLY the 6 characters, nothing else â€” no spaces, no punctuation, no explanation."
+                        “text”: (
+                            “Read this CAPTCHA image. It contains EXACTLY 6 hexadecimal characters.\n\n”
+                            “VALID characters only (16 total): 0 1 2 3 4 5 6 7 8 9 A B C D E F\n\n”
+                            “CRITICAL disambiguation rules:\n”
+                            “- If it looks like O (letter O) -> it is 0 (zero). O never appears.\n”
+                            “- If it looks like I, L, or l -> it is 1 (one). I/L never appear.\n”
+                            “- If it looks like S -> it is 5 (five). S never appears.\n”
+                            “- If it looks like G -> it is 6 (six). G never appears.\n”
+                            “- B has two bumps on the right side. 8 has two stacked circles.\n”
+                            “- D has one large curve. 0 is a symmetric oval.\n”
+                            “- C is an open arc. Only valid if it is truly C (no valid lookalike).\n\n”
+                            “Output ONLY the 6 characters with no spaces, no dashes, no explanation.”
                         )
                     },
                 ]
             }],
-            "generationConfig": {
-                "temperature": 0.0,
-                "maxOutputTokens": 32,
-                "thinkingConfig": {"thinkingBudget": 0},
+            “generationConfig”: {
+                “temperature”: 0.0,
+                “maxOutputTokens”: 16,
+                “thinkingConfig”: {“thinkingBudget”: 256},
             },
         }
 
