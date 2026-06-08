@@ -1583,6 +1583,8 @@ function _applySessionStatus(sess) {
 }
 
 let _sessionPollTimer = null;
+let _sessionKeepAliveTimer = null;
+let _sessionKeepAliveInFlight = false;
 
 async function _pollSessionUntilLoggedIn(attempts = 0) {
   if (attempts >= 12) return; // desiste apos ~24s
@@ -1594,6 +1596,34 @@ async function _pollSessionUntilLoggedIn(attempts = 0) {
     }
   } catch { /* ignora */ }
   _sessionPollTimer = setTimeout(() => _pollSessionUntilLoggedIn(attempts + 1), 2000);
+}
+
+async function _keepSessionAlive() {
+  if (_sessionKeepAliveInFlight) return;
+  _sessionKeepAliveInFlight = true;
+  try {
+    const sess = await api.get('/api/session-status');
+    if (sess && sess.logged_in) {
+      _applySessionStatus(sess);
+    } else {
+      if (_sessionPollTimer) clearTimeout(_sessionPollTimer);
+      _pollSessionUntilLoggedIn(0);
+    }
+  } catch { /* keepalive silencioso */ }
+  finally {
+    _sessionKeepAliveInFlight = false;
+  }
+}
+
+function startSessionKeepAlive() {
+  if (_sessionKeepAliveTimer) clearInterval(_sessionKeepAliveTimer);
+  _sessionKeepAliveTimer = setInterval(() => {
+    if (!document.hidden) _keepSessionAlive();
+  }, 120000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) _keepSessionAlive();
+  });
+  window.addEventListener('focus', () => _keepSessionAlive());
 }
 
 async function checkApiStatus() {
@@ -1620,6 +1650,7 @@ async function checkApiStatus() {
 // ── Init ───────────────────────────────────────────────────
 (async () => {
   navigate('events');
+  startSessionKeepAlive();
   checkApiStatus();
   loadOptions();
 })();

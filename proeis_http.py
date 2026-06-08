@@ -181,13 +181,13 @@ def norm_match(value: str | None) -> str:
 
 
 def _time_tokens(value: str | None) -> set[str]:
-    text = norm_match(value)
+    text = norm(value)
     if not text:
         return set()
     tokens: set[str] = set()
-    for h, m in re.findall(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text):
-        tokens.add(f"{int(h):02d}:{int(m):02d}")
     for h, m, _ in re.findall(r"\b([0-2]?\d):([0-5]\d):([0-5]\d)\b", text):
+        tokens.add(f"{int(h):02d}:{int(m):02d}")
+    for h, m in re.findall(r"\b([0-2]?\d)[:h]([0-5]\d)\b", text):
         tokens.add(f"{int(h):02d}:{int(m):02d}")
     return tokens
 
@@ -614,7 +614,7 @@ class ProeisHTTP:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
         primary   = os.getenv("GEMINI_MODEL",          "gemini-2.5-flash")
-        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash")
+        secondary = os.getenv("GEMINI_MODEL_PARALLEL", "gemini-2.5-flash-lite")
 
         if primary == secondary:
             result = self._solve_via_gemini_result(image, model=primary)
@@ -712,9 +712,9 @@ class ProeisHTTP:
 
         timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
         max_429_retries = 2
-        max_5xx_retries = 4
+        max_5xx_retries = int(os.getenv("GEMINI_5XX_RETRIES", "2"))
         retry_wait_429 = 62
-        retry_wait_5xx = 8  # initial backoff for 5xx; doubles each attempt
+        retry_wait_5xx = int(os.getenv("GEMINI_5XX_WAIT", "2"))  # initial backoff for 5xx; doubles each attempt
 
         total_attempts = max(max_429_retries, max_5xx_retries)
         _5xx_attempt = 0
