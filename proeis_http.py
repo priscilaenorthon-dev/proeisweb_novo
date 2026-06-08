@@ -686,16 +686,6 @@ class ProeisHTTP:
         _log(“CAPTCHA”, f”[Gemini] Enviando imagem para {model}...”)
         url = f”https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent”
         payload = {
-            “system_instruction”: {
-                “parts”: [{
-                    “text”: (
-                        “You are a precise OCR system specialized in reading hexadecimal CAPTCHAs. “
-                        “Your output must be EXACTLY 6 uppercase hexadecimal characters. “
-                        “Valid characters: 0 1 2 3 4 5 6 7 8 9 A B C D E F — nothing else. “
-                        “Never output spaces, newlines, punctuation, or explanations.”
-                    )
-                }]
-            },
             “contents”: [{
                 “parts”: [
                     {
@@ -706,25 +696,19 @@ class ProeisHTTP:
                     },
                     {
                         “text”: (
-                            “Read this CAPTCHA image. It contains EXACTLY 6 hexadecimal characters.\n\n”
-                            “VALID characters only (16 total): 0 1 2 3 4 5 6 7 8 9 A B C D E F\n\n”
-                            “CRITICAL disambiguation rules:\n”
-                            “- If it looks like O (letter O) -> it is 0 (zero). O never appears.\n”
-                            “- If it looks like I, L, or l -> it is 1 (one). I/L never appear.\n”
-                            “- If it looks like S -> it is 5 (five). S never appears.\n”
-                            “- If it looks like G -> it is 6 (six). G never appears.\n”
-                            “- B has two bumps on the right side. 8 has two stacked circles.\n”
-                            “- D has one large curve. 0 is a symmetric oval.\n”
-                            “- C is an open arc. Only valid if it is truly C (no valid lookalike).\n\n”
-                            “Output ONLY the 6 characters with no spaces, no dashes, no explanation.”
+                            “This is a CAPTCHA image. Read the EXACTLY 6 characters shown.\n”
+                            “ONLY these characters are valid: 0 1 2 3 4 5 6 7 8 9 A B C D E F\n”
+                            “Disambiguation (these letters NEVER appear -- replace with the digit):\n”
+                            “  O -> 0  |  I or L -> 1  |  S -> 5  |  G -> 6  |  Z -> 2  |  Q -> 0\n”
+                            “Reply with ONLY the 6 characters. No spaces. No explanation.”
                         )
                     },
                 ]
             }],
             “generationConfig”: {
                 “temperature”: 0.0,
-                “maxOutputTokens”: 16,
-                “thinkingConfig”: {“thinkingBudget”: 256},
+                “maxOutputTokens”: 32,
+                “thinkingConfig”: {“thinkingBudget”: 0},
             },
         }
 
