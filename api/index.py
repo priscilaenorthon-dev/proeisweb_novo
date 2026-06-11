@@ -1397,8 +1397,8 @@ def _trigger_warmup_login() -> None:
 
 
 @app.get("/api/session-debug")
-def session_debug(x_scheduler_secret: str = Header(default="")):
-    """Debug: inspeciona doc Firestore sem chamar check_auth. Requer SCHEDULER_SECRET."""
+def session_debug(x_scheduler_secret: str = Header(default=""), check: bool = False):
+    """Debug: inspeciona doc Firestore e opcionalmente testa check_auth. Requer SCHEDULER_SECRET."""
     load_env_file()
     expected = os.getenv("SCHEDULER_SECRET", "")
     if expected and not secrets.compare_digest(x_scheduler_secret, expected):
@@ -1417,7 +1417,7 @@ def session_debug(x_scheduler_secret: str = Header(default="")):
             num_cookies = len(cookies)
             cookie_names = list(cookies.keys()) if isinstance(cookies, dict) else []
         login_mismatch = data.get("login", "") != login_env
-        return {
+        result: dict[str, Any] = {
             "doc_exists": True,
             "user_name": data.get("user_name", ""),
             "login_in_doc": data.get("login", ""),
@@ -1427,6 +1427,22 @@ def session_debug(x_scheduler_secret: str = Header(default="")):
             "num_cookies": num_cookies,
             "cookie_names": cookie_names,
         }
+        if check and not login_mismatch:
+            pw = os.getenv("PROEIS_PASSWORD", "")
+            gkey = os.getenv("GEMINI_API_KEY", "")
+            if pw and gkey:
+                client = ProeisHTTP(login=login_env, password=pw,
+                                    twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+                                    gemini_api_key=gkey)
+                load_result = _load_session(client)
+                result["load_valid"] = load_result["valid"]
+                if load_result["valid"]:
+                    import time as _time
+                    t0 = _time.monotonic()
+                    auth_ok = client.check_auth()
+                    result["check_auth_ok"] = auth_ok
+                    result["check_auth_elapsed_s"] = round(_time.monotonic() - t0, 2)
+        return result
     except Exception as exc:
         return {"error": str(exc), "login_env": login_env}
 
