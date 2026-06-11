@@ -1448,6 +1448,83 @@ def session_logout():
         return {"ok": False, "error": str(exc)}
 
 
+@app.post("/api/captcha-ab")
+def captcha_ab(n: int = 6, configs: str = "pro,flash", x_scheduler_secret: str = Header(default="")):
+    """DIAGNOSTICO TEMPORARIO: coleta N captchas frescos do PROEIS e devolve a
+    imagem + leitura do Gemini sob varias configuracoes, SEM submeter o login
+    (zero risco de ban). Usado para medir empiricamente qual config acerta mais.
+
+    configs: lista separada por virgula entre: pro, flash, flash0
+    """
+    import base64 as _b64
+    from proeis_http import DEFAULT_URL
+
+    load_env_file()
+    expected_secret = os.getenv("SCHEDULER_SECRET", "")
+    if expected_secret and not secrets.compare_digest(x_scheduler_secret, expected_secret):
+        raise HTTPException(status_code=401, detail="Nao autorizado.")
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not gemini_key:
+        return {"ok": False, "error": "sem_gemini_key"}
+
+    # Mapeia nome -> (model, flash_thinking_budget)
+    config_map = {
+        "pro": ("gemini-2.5-pro", None),
+        "flash": ("gemini-2.5-flash", "1024"),
+        "flash0": ("gemini-2.5-flash", "0"),
+    }
+    wanted = [c.strip() for c in configs.split(",") if c.strip() in config_map]
+    if not wanted:
+        wanted = ["pro", "flash"]
+
+    client = ProeisHTTP(
+        login=os.getenv("PROEIS_LOGIN", ""),
+        password=os.getenv("PROEIS_PASSWORD", ""),
+        twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
+        gemini_api_key=gemini_key,
+    )
+
+    soup = client.request("GET", DEFAULT_URL)
+    payload = client.form_payload(soup)
+    payload["ddlTipoAcesso"] = "ID"
+    payload["__EVENTTARGET"] = "ddlTipoAcesso"
+    soup = client.post_form(payload, DEFAULT_URL)
+
+    results = []
+    for i in range(max(1, min(n, 12))):
+        try:
+            img = client.extract_captcha_image(soup)
+        except Exception as exc:
+            results.append({"i": i, "error": f"extract: {exc}"})
+            break
+
+        entry = {"i": i, "img_bytes": len(img), "img_b64": _b64.b64encode(img).decode("ascii"), "reads": {}}
+        for name in wanted:
+            model, budget = config_map[name]
+            prev = os.environ.get("GEMINI_FLASH_THINKING_BUDGET")
+            if budget is not None:
+                os.environ["GEMINI_FLASH_THINKING_BUDGET"] = budget
+            t0 = time.monotonic()
+            try:
+                ans = client._solve_via_gemini_result(img, model=model).text
+                entry["reads"][name] = {"ans": ans, "secs": round(time.monotonic() - t0, 1)}
+            except Exception as exc:
+                entry["reads"][name] = {"ans": f"ERR: {str(exc)[:60]}", "secs": round(time.monotonic() - t0, 1)}
+            finally:
+                if prev is None:
+                    os.environ.pop("GEMINI_FLASH_THINKING_BUDGET", None)
+                else:
+                    os.environ["GEMINI_FLASH_THINKING_BUDGET"] = prev
+        results.append(entry)
+
+        refreshed = client.refresh_page_captcha(soup)
+        if refreshed is not None:
+            soup = refreshed
+
+    return {"ok": True, "n": len(results), "configs": wanted, "results": results}
+
+
 @app.post("/api/session-keepalive")
 def session_keepalive(x_scheduler_secret: str = Header(default="")):
     """Mantém a sessao PROEIS ativa. Chamar via Cloud Scheduler a cada 10 min.
