@@ -352,7 +352,7 @@ async function renderEventsPage() {
                     ${badge(ev.disponivel === 'reserva' ? 'Reserva' : 'Titular', ev.disponivel === 'reserva' ? 'orange' : 'green')}
                   </div>
                   <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
-                    <span title="Data">📅 ${esc(formatListPreview(ev.data_evento, 'Próxima data disponível'))}</span>
+                    <span title="Data">📅 ${esc(formatDatePreview(ev.data_evento, 'Próxima data disponível'))}</span>
                     ${ev.hora_evento ? `<span title="Hora">🕐 ${esc(formatListPreview(ev.hora_evento, 'Qualquer horário'))}</span>` : ''}
                     ${ev.nome_evento ? `<span title="${esc(ev.nome_evento)}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">🏷️ ${esc(ev.nome_evento)}</span>` : ''}
                     ${ev.endereco ? `<span title="${esc(ev.endereco)}" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">📍 ${esc(ev.endereco)}</span>` : ''}
@@ -382,12 +382,26 @@ function formatListPreview(value, fallback) {
   return `${items.slice(0, 2).join(', ')} +${items.length - 2}`;
 }
 
+function formatDatePreview(value, fallback) {
+  const items = splitCsv(value).map(isoToBr);
+  if (items.length === 0) return fallback;
+  if (items.length <= 2) return items.join(', ');
+  return `${items.slice(0, 2).join(', ')} +${items.length - 2}`;
+}
+
 function toIsoDate(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return raw;
+}
+
+function isoToBr(value) {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   return raw;
 }
 
@@ -458,7 +472,7 @@ function updateEventModalValues() {
   if (datesInput) datesInput.value = dates.join(',');
   if (timesInput) timesInput.value = times.join(',');
   if (typeInput) typeInput.value = s.type;
-  if (datesText) datesText.textContent = dates.length ? dates.join(', ') : 'Selecione as datas';
+  if (datesText) datesText.textContent = dates.length ? dates.map(isoToBr).join(', ') : 'Selecione as datas';
   if (timesText) timesText.textContent = times.length ? times.join(', ') : 'Selecione os horários';
 }
 
@@ -724,7 +738,7 @@ async function renderRunPage() {
                   <input type="checkbox" class="ev-cb mt-0.5" data-i="${i}" checked>
                   <div class="text-sm min-w-0">
                     <div class="text-gray-200 truncate font-medium">${esc(ev.convenio || '—')}</div>
-                    <div class="text-gray-500 text-xs truncate">${esc(formatListPreview(ev.data_evento, 'Próxima data'))} · ${esc(ev.cpa || '—')}</div>
+                    <div class="text-gray-500 text-xs truncate">${esc(formatDatePreview(ev.data_evento, 'Próxima data'))} · ${esc(ev.cpa || '—')}</div>
                   </div>
                 </label>
               `).join('')}
@@ -1274,7 +1288,7 @@ async function startRun(horario = '') {
       const d = defs[finalStatus] || defs.erro;
       const el = document.createElement('div');
       el.className = `result-badge ${d.cls}`;
-      el.innerHTML = `<span>${d.icon}</span><span class="font-medium">${esc(ev.convenio)}</span><span class="text-gray-500 text-xs">${esc(ev.data_evento || 'Próx. data')}${ev.hora_evento ? ` · ${esc(ev.hora_evento)}` : ''} · ${esc(ev.cpa)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
+      el.innerHTML = `<span>${d.icon}</span><span class="font-medium">${esc(ev.convenio)}</span><span class="text-gray-500 text-xs">${esc(formatDatePreview(ev.data_evento, 'Próx. data'))}${ev.hora_evento ? ` · ${esc(ev.hora_evento)}` : ''} · ${esc(ev.cpa)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
       resultsEl.appendChild(el);
     }
   }
