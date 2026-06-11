@@ -1438,9 +1438,25 @@ def session_debug(x_scheduler_secret: str = Header(default=""), check: bool = Fa
                 result["load_valid"] = load_result["valid"]
                 if load_result["valid"]:
                     import time as _time
+                    import requests as _requests
+                    from proeis_http import ASSOCIAR_URL as _ASSOCIAR_URL
+                    from bs4 import BeautifulSoup as _BS
                     t0 = _time.monotonic()
-                    auth_ok = client.check_auth()
-                    result["check_auth_ok"] = auth_ok
+                    try:
+                        resp = client.session.request(
+                            "GET", _ASSOCIAR_URL,
+                            timeout=(8, 10), allow_redirects=True,
+                        )
+                        final_url = resp.url
+                        soup = _BS(resp.text, "html.parser")
+                        has_login = "Default.aspx" in final_url or bool(soup.select_one("#txtSenha")) or bool(soup.select_one("#btnEntrar"))
+                        result["check_auth_ok"] = not has_login
+                        result["check_auth_final_url"] = final_url
+                        result["check_auth_has_login_form"] = has_login
+                        result["check_auth_status_code"] = resp.status_code
+                    except Exception as exc2:
+                        result["check_auth_ok"] = False
+                        result["check_auth_error"] = str(exc2)
                     result["check_auth_elapsed_s"] = round(_time.monotonic() - t0, 2)
         return result
     except Exception as exc:
