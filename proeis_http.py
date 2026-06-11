@@ -1709,7 +1709,17 @@ class ProeisHTTP:
                     _log("VAGA", f"  opcao ignorada pelos filtros: {c.label[:240]}")
             if not candidates:
                 self.log_unmatched_action_rows(soup, prefer)
-            raise AutomationError("Nao encontrei a linha exata do evento solicitado.")
+            # Mensagem de erro mais informativa quando o filtro de hora eliminou tudo
+            detail = ""
+            if hora_evento and active_filters.get("hora") and candidates:
+                from re import findall as _findall
+                horas_disp = sorted({
+                    m for c in candidates
+                    for m in _findall(r'\b\d{1,2}:\d{2}(?::\d{2})?\b', c.label)
+                })
+                if horas_disp:
+                    detail = f" Horas disponíveis nessa data: {', '.join(horas_disp)}. Ajuste a hora no cadastro do evento."
+            raise AutomationError(f"Nao encontrei a linha exata do evento solicitado.{detail}")
         chosen = filtered[0]
         for pos, candidate in enumerate(filtered[:5], 1):
             match_score = self.event_match_score(candidate.label, nome_evento, hora_evento, turno, endereco)
@@ -2034,7 +2044,7 @@ def load_env_file(path: Path | None = None) -> None:
 
 def normalize_date_for_site(value: str) -> str:
     value = value.strip()
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
         try:
             return datetime.strptime(value, fmt).strftime("%Y-%m-%d")
         except ValueError:
