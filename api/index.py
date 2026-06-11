@@ -1396,6 +1396,41 @@ def _trigger_warmup_login() -> None:
     threading.Thread(target=_do_warmup, daemon=True).start()
 
 
+@app.get("/api/session-debug")
+def session_debug(x_scheduler_secret: str = Header(default="")):
+    """Debug: inspeciona doc Firestore sem chamar check_auth. Requer SCHEDULER_SECRET."""
+    load_env_file()
+    expected = os.getenv("SCHEDULER_SECRET", "")
+    if expected and not secrets.compare_digest(x_scheduler_secret, expected):
+        raise HTTPException(status_code=401, detail="Nao autorizado.")
+    login_env = os.getenv("PROEIS_LOGIN", "")
+    try:
+        doc = _session_collection().document("current").get()
+        if not doc.exists:
+            return {"doc_exists": False, "login_env": login_env}
+        data = doc.to_dict() or {}
+        cookies = data.get("cookies", [])
+        if isinstance(cookies, list):
+            num_cookies = len(cookies)
+            cookie_names = [c.get("name", "") for c in cookies if isinstance(c, dict)]
+        else:
+            num_cookies = len(cookies)
+            cookie_names = list(cookies.keys()) if isinstance(cookies, dict) else []
+        login_mismatch = data.get("login", "") != login_env
+        return {
+            "doc_exists": True,
+            "user_name": data.get("user_name", ""),
+            "login_in_doc": data.get("login", ""),
+            "login_env": login_env,
+            "login_mismatch": login_mismatch,
+            "saved_at": str(data.get("saved_at", "")),
+            "num_cookies": num_cookies,
+            "cookie_names": cookie_names,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "login_env": login_env}
+
+
 @app.get("/api/session-status")
 def session_status():
     """Retorna status da sessao persistida: {logged_in, user_name, saved_at}.
