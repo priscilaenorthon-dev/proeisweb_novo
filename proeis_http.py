@@ -505,6 +505,7 @@ class ProeisHTTP:
 
             if not soup.select_one("#txtSenha") and not soup.select_one("#TextCaptcha"):
                 _step(5, 5, "LOGIN", "Login realizado com sucesso. Sessao autenticada.")
+                self.report_good_captcha()
                 return
 
             if "senha invalida" in page_text:
@@ -660,12 +661,14 @@ class ProeisHTTP:
         if not secondary:
             secondary = primary
 
-        # Escala para thinking mode apos 2+ rejeicoes consecutivas do site
+        # Escala para thinking mode apos N rejeicoes consecutivas do site.
+        # GEMINI_THINKING_ESCALATION_BUDGET=0 (padrao) desativa; defina >0 para ativar.
         thinking_budget = 0
-        escalation_threshold = int(os.getenv("CAPTCHA_ESCALATION_AFTER_REJECTIONS", "2"))
-        if self.consecutive_site_rejections >= escalation_threshold:
-            thinking_budget = int(os.getenv("GEMINI_THINKING_ESCALATION_BUDGET", "512"))
-            if thinking_budget > 0:
+        escalation_budget = int(os.getenv("GEMINI_THINKING_ESCALATION_BUDGET", "0"))
+        if escalation_budget > 0:
+            escalation_threshold = int(os.getenv("CAPTCHA_ESCALATION_AFTER_REJECTIONS", "4"))
+            if self.consecutive_site_rejections >= escalation_threshold:
+                thinking_budget = escalation_budget
                 _log("CAPTCHA", f"[Escalacao] Usando thinkingBudget={thinking_budget} apos {self.consecutive_site_rejections} rejeicao(oes) do site.")
 
         if primary == secondary:
@@ -874,6 +877,9 @@ class ProeisHTTP:
     def report_bad_captcha_id(self, captcha_id: str | None) -> None:
         self.bad_captcha_reports += 1
         self.consecutive_site_rejections += 1
+
+    def report_good_captcha(self) -> None:
+        self.consecutive_site_rejections = 0
 
     def refresh_page_captcha(self, soup: BeautifulSoup) -> BeautifulSoup | None:
         _log("CAPTCHA", "Procurando controle para gerar nova imagem de captcha...")
@@ -1114,6 +1120,7 @@ class ProeisHTTP:
                     _log("CAPTCHA", "Nova imagem de captcha obtida apos rejeicao do filtro.")
                 continue
             _log("FILTRO", "Filtros aplicados com sucesso.")
+            self.report_good_captcha()
             return
         raise AutomationError("Captcha do filtro falhou em todas as tentativas.")
 
@@ -1172,6 +1179,7 @@ class ProeisHTTP:
                         self.report_bad_captcha()
                         soup = result_soup
                         continue
+                    self.report_good_captcha()
                     if self.available_candidates(result_soup, prefer):
                         _log("FILTRO", f"Vagas encontradas para: '{label}'")
                         return label
@@ -1344,6 +1352,7 @@ class ProeisHTTP:
                         date_seen_actions.add(action_key)
                         new_candidates.append(candidate)
 
+                    self.report_good_captcha()
                     if new_candidates:
                         _log("VAGA", f"{len(new_candidates)} vaga(s) encontrada(s) em '{label}' ({disponibilidade_nome}):")
                         print(f"[VAGAS] {len(new_candidates)} vaga(s) encontrada(s) em {label} ({disponibilidade_nome}):")
