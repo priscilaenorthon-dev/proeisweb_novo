@@ -1472,6 +1472,9 @@ def session_keepalive(x_scheduler_secret: str = Header(default="")):
         gemini_api_key=gemini_key,
     )
 
+    # Aguarda warmup em andamento antes de tentar restaurar; evita corrida de logins
+    _warmup_event.wait(timeout=30)
+
     if _try_restore_session(client):
         doc = _session_collection().document("current").get()
         user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val

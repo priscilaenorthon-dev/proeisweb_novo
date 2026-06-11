@@ -344,6 +344,7 @@ class ProeisHTTP:
         self.last_captcha_id: str | None = None
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
+        self.consecutive_site_rejections = 0
         _op_start()
         _model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
@@ -663,8 +664,16 @@ class ProeisHTTP:
         if not secondary:
             secondary = primary
 
+        # Escala para thinking mode apos 2+ rejeicoes consecutivas do site
+        thinking_budget = 0
+        escalation_threshold = int(os.getenv("CAPTCHA_ESCALATION_AFTER_REJECTIONS", "2"))
+        if self.consecutive_site_rejections >= escalation_threshold:
+            thinking_budget = int(os.getenv("GEMINI_THINKING_ESCALATION_BUDGET", "512"))
+            if thinking_budget > 0:
+                _log("CAPTCHA", f"[Escalacao] Usando thinkingBudget={thinking_budget} apos {self.consecutive_site_rejections} rejeicao(oes) do site.")
+
         if primary == secondary:
-            result = self._solve_via_gemini_result(image, model=primary)
+            result = self._solve_via_gemini_result(image, model=primary, thinking_budget=thinking_budget)
             text = normalize_captcha_answer(result.text)
             self.last_captcha_id = result.captcha_id
             _log("CAPTCHA", f"Vencedor: {primary} | resposta={text}")
@@ -678,7 +687,7 @@ class ProeisHTTP:
 
         def run(model: str, is_primary: bool) -> None:
             try:
-                result = self._solve_via_gemini_result(image, stop_event=stop_event, model=model)
+                result = self._solve_via_gemini_result(image, stop_event=stop_event, model=model, thinking_budget=thinking_budget)
                 with lock:
                     if winner[0] is None:
                         winner[0] = result
@@ -722,6 +731,7 @@ class ProeisHTTP:
         image: bytes,
         stop_event: threading.Event | None = None,
         model: str | None = None,
+        thinking_budget: int = 0,
     ) -> CaptchaSubmission:
         """Resolve captcha usando Gemini via visao computacional."""
         if stop_event and stop_event.is_set():
@@ -763,15 +773,17 @@ class ProeisHTTP:
         )
         _log("CAPTCHA", f"[Gemini] Enviando imagem para {model}...")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        thinking_budget: int | None = None
+        # thinking_budget parameter (>0) overrides env-based budget (for escalation after rejections)
         model_lc = model.lower()
+        env_budget: int | None = None
         if "flash" in model_lc:
-            thinking_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "0"))
+            env_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "0"))
         elif os.getenv("GEMINI_PRO_THINKING_BUDGET"):
-            thinking_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "0"))
+            env_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "0"))
+        effective_budget = thinking_budget if thinking_budget > 0 else (env_budget or 0)
         max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "32"))
-        if thinking_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
-            max_output_tokens = thinking_budget + 64
+        if effective_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
+            max_output_tokens = effective_budget + 64
         elif "2.5-pro" in model_lc and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
             max_output_tokens = int(os.getenv("GEMINI_PRO_MAX_OUTPUT_TOKENS", "2048"))
         payload = {
@@ -783,10 +795,9 @@ class ProeisHTTP:
                 "maxOutputTokens": max_output_tokens,
             },
         }
-        if thinking_budget is not None:
-            payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": thinking_budget}
-        if thinking_budget:
-            _log("CAPTCHA", f"[Gemini] thinkingBudget={thinking_budget} ativado para {model}.")
+        payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": effective_budget}
+        if effective_budget:
+            _log("CAPTCHA", f"[Gemini] thinkingBudget={effective_budget} ativado para {model}.")
 
         timeout = int(os.getenv("GEMINI_TIMEOUT", "30"))
         max_429_retries = 2
@@ -862,9 +873,11 @@ class ProeisHTTP:
 
     def report_bad_captcha(self) -> None:
         self.bad_captcha_reports += 1
+        self.consecutive_site_rejections += 1
 
     def report_bad_captcha_id(self, captcha_id: str | None) -> None:
-        pass
+        self.bad_captcha_reports += 1
+        self.consecutive_site_rejections += 1
 
     def refresh_page_captcha(self, soup: BeautifulSoup) -> BeautifulSoup | None:
         _log("CAPTCHA", "Procurando controle para gerar nova imagem de captcha...")
