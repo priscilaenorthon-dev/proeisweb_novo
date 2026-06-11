@@ -1553,11 +1553,18 @@ def session_keepalive(x_scheduler_secret: str = Header(default="")):
 
     try:
         login_with_retries(client, "Keepalive automatico")
+        # Verifica se a sessao recem-criada ainda e valida (diagrama de curta duracao)
+        import time as _t
+        t0 = _t.monotonic()
+        post_login_valid = client.check_auth()
+        post_login_elapsed = round(_t.monotonic() - t0, 2)
+        print(f"[KEEPALIVE] check_auth pos-login: {post_login_valid} ({post_login_elapsed}s)")
         _fetch_user_name_and_save(client)
         doc = _session_collection().document("current").get()
         user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
         print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
-        return {"ok": True, "status": "renovada", "user_name": user_name}
+        return {"ok": True, "status": "renovada", "user_name": user_name,
+                "post_login_valid": post_login_valid, "post_login_elapsed_s": post_login_elapsed}
     except Exception as exc:
         print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
