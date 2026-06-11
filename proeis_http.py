@@ -368,17 +368,16 @@ class ProeisHTTP:
         self.soup = None
 
     def check_auth(self) -> bool:
-        """Verifica se a sessao atual esta autenticada.
+        """Verifica se a sessao atual esta autenticada via MENU_URL.
 
-        Tenta ir direto para a tela de servicos (ASSOCIAR_URL). Se o PROEIS
-        carregar diretamente, navigate_to_service_page() vira no-op e economiza
-        ~0.4s de navegacao. Se redirecionar para o menu, comportamento identico
-        ao anterior (sem regressao).
+        FrmEventoAssociar.aspx requer estado de navegacao e redireciona para
+        Default.aspx mesmo com sessao valida. MENU_URL e acessivel diretamente
+        com qualquer sessao autenticada e e o verificador correto.
         """
         t0 = time.monotonic()
         try:
             response = self.session.request(
-                "GET", ASSOCIAR_URL,
+                "GET", MENU_URL,
                 timeout=(int(os.getenv("PROEIS_CONNECT_TIMEOUT", "8")), 10),
                 allow_redirects=True,
             )
@@ -391,10 +390,7 @@ class ProeisHTTP:
                 return False
             self.soup = soup_check
             self.last_url = final_url
-            if self.has_service_fields(self.soup):
-                _log("SESSION", "Sessao ativa — tela de servicos carregada diretamente (navegacao pulada).")
-            else:
-                _log("SESSION", "Sessao ativa — redirecionado ao menu (navegacao normal).")
+            _log("SESSION", "Sessao ativa — menu carregado com sucesso.")
             return True
         except Exception as exc:
             self.site_elapsed_seconds += time.monotonic() - t0

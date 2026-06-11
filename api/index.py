@@ -1396,73 +1396,6 @@ def _trigger_warmup_login() -> None:
     threading.Thread(target=_do_warmup, daemon=True).start()
 
 
-@app.get("/api/session-debug")
-def session_debug(x_scheduler_secret: str = Header(default=""), check: bool = False):
-    """Debug: inspeciona doc Firestore e opcionalmente testa check_auth. Requer SCHEDULER_SECRET."""
-    load_env_file()
-    expected = os.getenv("SCHEDULER_SECRET", "")
-    if expected and not secrets.compare_digest(x_scheduler_secret, expected):
-        raise HTTPException(status_code=401, detail="Nao autorizado.")
-    login_env = os.getenv("PROEIS_LOGIN", "")
-    try:
-        doc = _session_collection().document("current").get()
-        if not doc.exists:
-            return {"doc_exists": False, "login_env": login_env}
-        data = doc.to_dict() or {}
-        cookies = data.get("cookies", [])
-        if isinstance(cookies, list):
-            num_cookies = len(cookies)
-            cookie_names = [c.get("name", "") for c in cookies if isinstance(c, dict)]
-        else:
-            num_cookies = len(cookies)
-            cookie_names = list(cookies.keys()) if isinstance(cookies, dict) else []
-        login_mismatch = data.get("login", "") != login_env
-        result: dict[str, Any] = {
-            "doc_exists": True,
-            "user_name": data.get("user_name", ""),
-            "login_in_doc": data.get("login", ""),
-            "login_env": login_env,
-            "login_mismatch": login_mismatch,
-            "saved_at": str(data.get("saved_at", "")),
-            "num_cookies": num_cookies,
-            "cookie_names": cookie_names,
-        }
-        if check and not login_mismatch:
-            pw = os.getenv("PROEIS_PASSWORD", "")
-            gkey = os.getenv("GEMINI_API_KEY", "")
-            if pw and gkey:
-                client = ProeisHTTP(login=login_env, password=pw,
-                                    twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
-                                    gemini_api_key=gkey)
-                load_result = _load_session(client)
-                result["load_valid"] = load_result["valid"]
-                if load_result["valid"]:
-                    import time as _time
-                    import requests as _requests
-                    from proeis_http import ASSOCIAR_URL as _ASSOCIAR_URL
-                    from bs4 import BeautifulSoup as _BS
-                    t0 = _time.monotonic()
-                    try:
-                        resp = client.session.request(
-                            "GET", _ASSOCIAR_URL,
-                            timeout=(8, 10), allow_redirects=True,
-                        )
-                        final_url = resp.url
-                        soup = _BS(resp.text, "html.parser")
-                        has_login = "Default.aspx" in final_url or bool(soup.select_one("#txtSenha")) or bool(soup.select_one("#btnEntrar"))
-                        result["check_auth_ok"] = not has_login
-                        result["check_auth_final_url"] = final_url
-                        result["check_auth_has_login_form"] = has_login
-                        result["check_auth_status_code"] = resp.status_code
-                    except Exception as exc2:
-                        result["check_auth_ok"] = False
-                        result["check_auth_error"] = str(exc2)
-                    result["check_auth_elapsed_s"] = round(_time.monotonic() - t0, 2)
-        return result
-    except Exception as exc:
-        return {"error": str(exc), "login_env": login_env}
-
-
 @app.get("/api/session-status")
 def session_status():
     """Retorna status da sessao persistida: {logged_in, user_name, saved_at}.
@@ -1553,25 +1486,11 @@ def session_keepalive(x_scheduler_secret: str = Header(default="")):
 
     try:
         login_with_retries(client, "Keepalive automatico")
-        # Captura estado exato apos login_flow retornar
-        import time as _t
-        post_login_url = client.last_url or ""
-        post_login_page = (client.soup.get_text(" ", strip=True)[:300] if client.soup else "")
-        t0 = _t.monotonic()
-        post_login_valid = client.check_auth()
-        post_login_elapsed = round(_t.monotonic() - t0, 2)
-        post_check_url = client.last_url or ""
-        print(f"[KEEPALIVE] pos-login url={post_login_url!r} check_auth={post_login_valid}({post_login_elapsed}s) final_url={post_check_url!r}")
         _fetch_user_name_and_save(client)
         doc = _session_collection().document("current").get()
         user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
         print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
-        return {"ok": True, "status": "renovada", "user_name": user_name,
-                "post_login_url": post_login_url,
-                "post_login_page_snippet": post_login_page,
-                "post_login_valid": post_login_valid,
-                "post_login_elapsed_s": post_login_elapsed,
-                "post_check_url": post_check_url}
+        return {"ok": True, "status": "renovada", "user_name": user_name}
     except Exception as exc:
         print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
