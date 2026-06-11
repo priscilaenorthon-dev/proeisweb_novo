@@ -1553,18 +1553,25 @@ def session_keepalive(x_scheduler_secret: str = Header(default="")):
 
     try:
         login_with_retries(client, "Keepalive automatico")
-        # Verifica se a sessao recem-criada ainda e valida (diagrama de curta duracao)
+        # Captura estado exato apos login_flow retornar
         import time as _t
+        post_login_url = client.last_url or ""
+        post_login_page = (client.soup.get_text(" ", strip=True)[:300] if client.soup else "")
         t0 = _t.monotonic()
         post_login_valid = client.check_auth()
         post_login_elapsed = round(_t.monotonic() - t0, 2)
-        print(f"[KEEPALIVE] check_auth pos-login: {post_login_valid} ({post_login_elapsed}s)")
+        post_check_url = client.last_url or ""
+        print(f"[KEEPALIVE] pos-login url={post_login_url!r} check_auth={post_login_valid}({post_login_elapsed}s) final_url={post_check_url!r}")
         _fetch_user_name_and_save(client)
         doc = _session_collection().document("current").get()
         user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
         print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
         return {"ok": True, "status": "renovada", "user_name": user_name,
-                "post_login_valid": post_login_valid, "post_login_elapsed_s": post_login_elapsed}
+                "post_login_url": post_login_url,
+                "post_login_page_snippet": post_login_page,
+                "post_login_valid": post_login_valid,
+                "post_login_elapsed_s": post_login_elapsed,
+                "post_check_url": post_check_url}
     except Exception as exc:
         print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
