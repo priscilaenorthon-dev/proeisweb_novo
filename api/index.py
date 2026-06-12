@@ -1581,10 +1581,16 @@ async def captcha_bench(request: Request):
                 )
 
                 # ── Collect login captchas ───────────────────────────────────────
+                # O captcha de login aparece APÓS o postback ddlTipoAcesso=ID,
+                # não no GET inicial da página.
                 login_images: list[bytes] = []
                 emit(f"[LOGIN] Coletando {n_login} imagens da tela de login (Default.aspx)...")
                 try:
-                    soup = client.request("GET", DEFAULT_URL)
+                    base_soup = client.request("GET", DEFAULT_URL)
+                    payload = client.form_payload(base_soup)
+                    payload["ddlTipoAcesso"] = "ID"
+                    payload["__EVENTTARGET"] = "ddlTipoAcesso"
+                    soup = client.post_form(payload, DEFAULT_URL)
                     for i in range(n_login):
                         try:
                             img = client.extract_captcha_image(soup)
@@ -1592,13 +1598,21 @@ async def captcha_bench(request: Request):
                             emit(f"[LOGIN] #{i+1}/{n_login}: {len(img)}B extraidos")
                             if i < n_login - 1:
                                 refreshed = client.refresh_page_captcha(soup)
-                                soup = refreshed if refreshed else client.request("GET", DEFAULT_URL)
+                                if refreshed:
+                                    soup = refreshed
+                                else:
+                                    base_soup = client.request("GET", DEFAULT_URL)
+                                    payload = client.form_payload(base_soup)
+                                    payload["ddlTipoAcesso"] = "ID"
+                                    payload["__EVENTTARGET"] = "ddlTipoAcesso"
+                                    soup = client.post_form(payload, DEFAULT_URL)
                         except Exception as exc:
                             emit(f"[LOGIN] #{i+1}: erro ao extrair - {exc}")
                 except Exception as exc:
                     emit(f"[LOGIN] Falha ao acessar Default.aspx: {exc}")
 
                 # ── Collect filter captchas ──────────────────────────────────────
+                # FrmEventoAssociar requer navegacao via menu apos login.
                 filter_images: list[bytes] = []
                 if login_val and pwd_val:
                     emit(f"[FILTRO] Coletando {n_filter} imagens da tela de filtro (FrmEventoAssociar)...")
@@ -1606,7 +1620,9 @@ async def captcha_bench(request: Request):
                         if not _try_restore_session(client):
                             emit("[FILTRO] Sessao expirada; fazendo login...")
                             login_with_retries(client, "benchmark-captcha")
-                        fsoup = client.request("GET", ASSOCIAR_URL)
+                        from proeis_http import navigate_to_service_page as _nav
+                        client.navigate_to_service_page()
+                        fsoup = client.require_soup()
                         for i in range(n_filter):
                             try:
                                 img = client.extract_captcha_image(fsoup)
@@ -1614,7 +1630,11 @@ async def captcha_bench(request: Request):
                                 emit(f"[FILTRO] #{i+1}/{n_filter}: {len(img)}B extraidos")
                                 if i < n_filter - 1:
                                     refreshed = client.refresh_page_captcha(fsoup)
-                                    fsoup = refreshed if refreshed else client.request("GET", ASSOCIAR_URL)
+                                    if refreshed:
+                                        fsoup = refreshed
+                                    else:
+                                        client.navigate_to_service_page()
+                                        fsoup = client.require_soup()
                             except Exception as exc:
                                 emit(f"[FILTRO] #{i+1}: erro ao extrair - {exc}")
                     except Exception as exc:
