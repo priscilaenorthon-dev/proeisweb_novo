@@ -26,8 +26,12 @@ from proeis_http import (  # noqa: E402
     AutomationError,
     ProeisHTTP,
     MENU_URL,
+    DEFAULT_URL,
+    ASSOCIAR_URL,
     load_env_file,
     login_with_retries,
+    normalize_captcha_answer,
+    is_valid_captcha_answer,
     reparar_mojibake,
     run_batch_events,
     wait_for_target_time,
@@ -1538,6 +1542,180 @@ def session_keepalive_web(body: TestLoginRequest):
 
 
 from starlette.staticfiles import StaticFiles
+
+@app.post("/api/captcha-bench")
+async def captcha_bench(request: Request):
+    """
+    Benchmark de resolucao de captcha: coleta imagens reais do PROEIS (login + filtro)
+    e testa multiplos modelos/budgets Gemini. Retorna SSE com progresso e stats finais.
+    """
+    load_env_file()
+    body = await request.json()
+    n_login  = min(int(body.get("n_login", 15)), 25)
+    n_filter = min(int(body.get("n_filter", 15)), 25)
+    configs  = body.get("configs") or [
+        {"model": "gemini-2.5-flash", "budget": 0,    "label": "flash-0"},
+        {"model": "gemini-2.5-flash", "budget": 1024, "label": "flash-1024"},
+        {"model": "gemini-2.5-flash", "budget": 4096, "label": "flash-4096"},
+        {"model": "gemini-2.5-pro",   "budget": 0,    "label": "pro-0"},
+    ]
+
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    login_val  = os.getenv("PROEIS_LOGIN", "")
+    pwd_val    = os.getenv("PROEIS_PASSWORD", "")
+
+    if not gemini_key:
+        return {"ok": False, "message": "GEMINI_API_KEY nao configurada."}
+
+    async def generate():
+        q: asyncio.Queue = asyncio.Queue()
+
+        def run() -> None:
+            def emit(msg: str, **kw) -> None:
+                q.put_nowait({"type": "log", "line": msg, **kw})
+
+            try:
+                client = ProeisHTTP(
+                    login=login_val, password=pwd_val,
+                    twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
+                )
+
+                # ── Collect login captchas ───────────────────────────────────────
+                login_images: list[bytes] = []
+                emit(f"[LOGIN] Coletando {n_login} imagens da tela de login (Default.aspx)...")
+                try:
+                    soup = client.request("GET", DEFAULT_URL)
+                    for i in range(n_login):
+                        try:
+                            img = client.extract_captcha_image(soup)
+                            login_images.append(img)
+                            emit(f"[LOGIN] #{i+1}/{n_login}: {len(img)}B extraidos")
+                            if i < n_login - 1:
+                                refreshed = client.refresh_page_captcha(soup)
+                                soup = refreshed if refreshed else client.request("GET", DEFAULT_URL)
+                        except Exception as exc:
+                            emit(f"[LOGIN] #{i+1}: erro ao extrair - {exc}")
+                except Exception as exc:
+                    emit(f"[LOGIN] Falha ao acessar Default.aspx: {exc}")
+
+                # ── Collect filter captchas ──────────────────────────────────────
+                filter_images: list[bytes] = []
+                if login_val and pwd_val:
+                    emit(f"[FILTRO] Coletando {n_filter} imagens da tela de filtro (FrmEventoAssociar)...")
+                    try:
+                        if not _try_restore_session(client):
+                            emit("[FILTRO] Sessao expirada; fazendo login...")
+                            login_with_retries(client, "benchmark-captcha")
+                        fsoup = client.request("GET", ASSOCIAR_URL)
+                        for i in range(n_filter):
+                            try:
+                                img = client.extract_captcha_image(fsoup)
+                                filter_images.append(img)
+                                emit(f"[FILTRO] #{i+1}/{n_filter}: {len(img)}B extraidos")
+                                if i < n_filter - 1:
+                                    refreshed = client.refresh_page_captcha(fsoup)
+                                    fsoup = refreshed if refreshed else client.request("GET", ASSOCIAR_URL)
+                            except Exception as exc:
+                                emit(f"[FILTRO] #{i+1}: erro ao extrair - {exc}")
+                    except Exception as exc:
+                        emit(f"[FILTRO] Nao foi possivel coletar: {exc}")
+                else:
+                    emit("[FILTRO] Credenciais ausentes; pulando captchas de filtro.")
+
+                # ── Analyse image characteristics ────────────────────────────────
+                login_sizes  = [len(b) for b in login_images]
+                filter_sizes = [len(b) for b in filter_images]
+                emit(f"\n[INFO] Login:  {len(login_images)} imagens | tamanho médio {round(sum(login_sizes)/max(1,len(login_sizes)))}B")
+                emit(f"[INFO] Filtro: {len(filter_images)} imagens | tamanho médio {round(sum(filter_sizes)/max(1,len(filter_sizes)))}B")
+                same_size = (
+                    login_sizes and filter_sizes and
+                    abs(sum(login_sizes)/len(login_sizes) - sum(filter_sizes)/len(filter_sizes)) < 200
+                )
+                emit(f"[INFO] Captchas login vs filtro parecem {'IGUAIS (mesmo gerador)' if same_size else 'DIFERENTES (geradores distintos)'}")
+
+                # ── Solve each image with each config ────────────────────────────
+                all_items = [("login", b) for b in login_images] + [("filter", b) for b in filter_images]
+                total = len(all_items)
+                emit(f"\n[BENCH] {total} imagens x {len(configs)} configs = {total*len(configs)} chamadas Gemini")
+
+                all_results: list[dict] = []
+
+                for idx, (source, img) in enumerate(all_items):
+                    row: dict = {"source": source, "i": idx + 1, "configs": {}}
+                    for cfg in configs:
+                        model  = cfg.get("model", "gemini-2.5-flash")
+                        budget = int(cfg.get("budget", 0))
+                        label  = str(cfg.get("label") or f"{model.split('gemini-')[-1]}-b{budget}")
+                        t0 = time.monotonic()
+                        try:
+                            res = client._solve_via_gemini_result(img, model=model, thinking_budget=budget)
+                            elapsed = round(time.monotonic() - t0, 2)
+                            raw = res.text.strip()
+                            norm = normalize_captcha_answer(raw)
+                            valid = is_valid_captcha_answer(norm)
+                            row["configs"][label] = {"ok": True, "answer": norm, "valid": valid, "elapsed": elapsed}
+                            emit(f"[{idx+1}/{total}] {source} | {label}: {norm} {'✓' if valid else '✗'} {elapsed}s")
+                        except Exception as exc:
+                            elapsed = round(time.monotonic() - t0, 2)
+                            row["configs"][label] = {"ok": False, "error": str(exc)[:120], "elapsed": elapsed}
+                            emit(f"[{idx+1}/{total}] {source} | {label}: ERRO {elapsed}s — {str(exc)[:80]}")
+                    all_results.append(row)
+
+                # ── Aggregate stats ──────────────────────────────────────────────
+                stats: dict = {}
+                for cfg in configs:
+                    label = str(cfg.get("label") or f"{cfg.get('model','?').split('gemini-')[-1]}-b{cfg.get('budget',0)}")
+                    rows  = [r["configs"][label] for r in all_results if label in r["configs"]]
+                    ok    = [r for r in rows if r.get("ok")]
+                    valid = [r for r in ok if r.get("valid")]
+                    times = [r["elapsed"] for r in ok]
+                    import statistics as _st
+                    stats[label] = {
+                        "n": len(rows),
+                        "ok_pct":    round(len(ok)    / max(1, len(rows)) * 100, 1),
+                        "valid_pct": round(len(valid) / max(1, len(rows)) * 100, 1),
+                        "mean_s":    round(sum(times) / max(1, len(times)), 2),
+                        "median_s":  round(_st.median(times) if times else 0, 2),
+                        "min_s":     round(min(times) if times else 0, 2),
+                        "max_s":     round(max(times) if times else 0, 2),
+                    }
+
+                # per-source valid_pct breakdown
+                source_stats: dict = {}
+                for src in ("login", "filter"):
+                    src_rows = [r for r in all_results if r["source"] == src]
+                    if not src_rows:
+                        continue
+                    src_stats: dict = {}
+                    for cfg in configs:
+                        label = str(cfg.get("label") or f"{cfg.get('model','?').split('gemini-')[-1]}-b{cfg.get('budget',0)}")
+                        rows  = [r["configs"][label] for r in src_rows if label in r["configs"]]
+                        valid = [r for r in rows if r.get("ok") and r.get("valid")]
+                        times = [r["elapsed"] for r in rows if r.get("ok")]
+                        src_stats[label] = {
+                            "valid_pct": round(len(valid) / max(1, len(rows)) * 100, 1),
+                            "mean_s":    round(sum(times) / max(1, len(times)), 2) if times else 0,
+                        }
+                    source_stats[src] = src_stats
+
+                q.put_nowait({"type": "done", "stats": stats, "source_stats": source_stats, "detail": all_results})
+
+            except Exception as exc:
+                q.put_nowait({"type": "error", "message": str(exc)})
+            finally:
+                q.put_nowait(None)
+
+        loop = asyncio.get_event_loop()
+        threading.Thread(target=run, daemon=True).start()
+
+        while True:
+            item = await q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")
 
