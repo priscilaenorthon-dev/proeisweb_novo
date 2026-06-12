@@ -1557,7 +1557,7 @@ async def captcha_bench(request: Request):
         {"model": "gemini-2.5-flash", "budget": 0,    "label": "flash-0"},
         {"model": "gemini-2.5-flash", "budget": 1024, "label": "flash-1024"},
         {"model": "gemini-2.5-flash", "budget": 4096, "label": "flash-4096"},
-        {"model": "gemini-2.5-pro",   "budget": 0,    "label": "pro-0"},
+        {"model": "gemini-2.5-pro",   "budget": 1024, "label": "pro-1024"},
     ]
 
     gemini_key = os.getenv("GEMINI_API_KEY", "")
@@ -1620,7 +1620,6 @@ async def captcha_bench(request: Request):
                         if not _try_restore_session(client):
                             emit("[FILTRO] Sessao expirada; fazendo login...")
                             login_with_retries(client, "benchmark-captcha")
-                        from proeis_http import navigate_to_service_page as _nav
                         client.navigate_to_service_page()
                         fsoup = client.require_soup()
                         for i in range(n_filter):
@@ -1660,6 +1659,10 @@ async def captcha_bench(request: Request):
 
                 all_results: list[dict] = []
 
+                # Limit 429 wait to 10s inside benchmark to avoid stalling
+                _prev_429_wait = os.environ.get("GEMINI_429_RETRY_WAIT")
+                os.environ["GEMINI_429_RETRY_WAIT"] = "10"
+
                 for idx, (source, img) in enumerate(all_items):
                     row: dict = {"source": source, "i": idx + 1, "configs": {}}
                     for cfg in configs:
@@ -1680,6 +1683,11 @@ async def captcha_bench(request: Request):
                             row["configs"][label] = {"ok": False, "error": str(exc)[:120], "elapsed": elapsed}
                             emit(f"[{idx+1}/{total}] {source} | {label}: ERRO {elapsed}s — {str(exc)[:80]}")
                     all_results.append(row)
+
+                if _prev_429_wait is not None:
+                    os.environ["GEMINI_429_RETRY_WAIT"] = _prev_429_wait
+                else:
+                    os.environ.pop("GEMINI_429_RETRY_WAIT", None)
 
                 # ── Aggregate stats ──────────────────────────────────────────────
                 stats: dict = {}
