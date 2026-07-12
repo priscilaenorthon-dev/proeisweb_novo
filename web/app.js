@@ -132,7 +132,7 @@ const api = {
 // ── Router ─────────────────────────────────────────────────
 function navigate(page) {
   state.page = page;
-  setShellMode(page === 'login' ? 'login' : 'app');
+  setShellMode('app');
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const nav = document.getElementById(`nav-${page}`);
   if (nav) nav.classList.add('active');
@@ -166,140 +166,6 @@ async function hasUsableCredentials(settings) {
 
 function setShellMode(mode) {
   document.body.classList.toggle('login-mode', mode === 'login');
-}
-
-function loginBodyFromForm() {
-  return {
-    login: document.getElementById('login-user')?.value.trim() || '',
-    password: document.getElementById('login-password')?.value || '',
-    gemini_api_key: document.getElementById('login-gemini')?.value.trim() || '',
-  };
-}
-
-async function renderLoginPage(message = '') {
-  state.page = 'login';
-  setShellMode('login');
-  const saved = storage.getSettings();
-  const env = await loadEnvDefaults();
-  const needsGemini = !env.has_gemini_api_key;
-  document.getElementById('content').innerHTML = `
-    <section class="login-screen">
-      <form class="login-card" onsubmit="loginSubmit(event)">
-        <div class="login-logo" aria-hidden="true"><span></span></div>
-        <div class="login-heading">
-          <h1>CPROEIS</h1>
-          <p>Automacao de Eventos</p>
-        </div>
-
-        <label class="login-field">
-          <span class="login-label">Tipo de Acesso</span>
-          <select id="login-access" class="login-control">
-            <option value="ID">ID Funcional</option>
-            <option value="CPF">CPF</option>
-          </select>
-        </label>
-
-        <label class="login-field">
-          <span class="login-label">Login</span>
-          <input id="login-user" class="login-control login-control-light" type="text" inputmode="numeric" autocomplete="username" value="${esc(saved.login || '')}" placeholder="Digite seu login">
-        </label>
-
-        <label class="login-field">
-          <span class="login-label">Senha</span>
-          <input id="login-password" class="login-control login-control-light" type="password" autocomplete="current-password" value="${esc(saved.password || '')}" placeholder="Digite sua senha">
-        </label>
-
-        ${needsGemini ? `
-          <label class="login-field">
-            <span class="login-label">Gemini API Key</span>
-            <input id="login-gemini" class="login-control login-control-light" type="password" autocomplete="off" value="${esc(saved.gemini_api_key || '')}" placeholder="AIzaSy...">
-          </label>
-        ` : `<input id="login-gemini" type="hidden" value="${esc(saved.gemini_api_key || '')}">`}
-
-        <div class="login-field">
-          <span class="login-label">Captcha</span>
-          <div class="login-captcha-preview" aria-hidden="true">
-            <span class="cap-line cap-line-a"></span>
-            <span class="cap-line cap-line-b"></span>
-            <span class="cap-code">PROEIS</span>
-            <span class="cap-dot cap-dot-a"></span>
-            <span class="cap-dot cap-dot-b"></span>
-            <span class="cap-dot cap-dot-c"></span>
-          </div>
-          <div class="login-captcha-actions">
-            <span id="login-captcha-status">Resolvido pelo servidor durante o login</span>
-            <button type="button" onclick="loginRefreshCaptcha()">Trocar imagem</button>
-          </div>
-        </div>
-
-        <label class="login-toggle">
-          <input id="login-reconnect" type="checkbox" ${saved.reconnect_auto !== false ? 'checked' : ''}>
-          <span></span>
-          <strong>Reconectar automaticamente</strong>
-          <small>Reconecta e continuara automaticamente a automacao caso a sessao expire.</small>
-        </label>
-
-        <button id="login-submit" class="login-submit" type="submit"><span>Entrar</span></button>
-        <div id="login-feedback" class="login-feedback ${message ? '' : 'hidden'}">${esc(message)}</div>
-      </form>
-    </section>
-  `;
-}
-
-function loginRefreshCaptcha() {
-  const el = document.getElementById('login-captcha-status');
-  if (el) el.textContent = 'Nova imagem sera usada no proximo login';
-}
-
-async function loginSubmit(event) {
-  event.preventDefault();
-  const body = loginBodyFromForm();
-  const env = await loadEnvDefaults();
-  const feedback = document.getElementById('login-feedback');
-  const button = document.getElementById('login-submit');
-  const reconnect = document.getElementById('login-reconnect')?.checked !== false;
-
-  if (!body.login || !body.password || (!body.gemini_api_key && !env.has_gemini_api_key)) {
-    if (feedback) {
-      feedback.classList.remove('hidden');
-      feedback.textContent = 'Preencha login, senha e Gemini API Key.';
-    }
-    return;
-  }
-
-  if (button) {
-    button.disabled = true;
-    button.innerHTML = '<span>Entrando...</span>';
-  }
-  if (feedback) {
-    feedback.classList.remove('hidden');
-    feedback.textContent = 'Conectando ao PROEIS e resolvendo captcha...';
-  }
-
-  try {
-    const data = await api.post('/api/test-login', body);
-    if (!data.ok) throw new Error(data.message || 'Login recusado.');
-
-    storage.saveSettings({
-      ...storage.getSettings(),
-      login: body.login,
-      password: body.password,
-      gemini_api_key: body.gemini_api_key,
-      reconnect_auto: reconnect,
-    });
-
-    _applySessionStatus({ logged_in: true, user_name: data.nome || data.login || body.login });
-    startSessionKeepAlive(true);
-    setShellMode('app');
-    await navigate('events');
-  } catch (err) {
-    if (feedback) feedback.textContent = `Falha no login: ${err.message}`;
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.innerHTML = '<span>Entrar</span>';
-    }
-  }
 }
 
 // ── Utils ──────────────────────────────────────────────────
@@ -1781,8 +1647,7 @@ async function renderHelpPage() {
 async function renderPage() {
   const c = document.getElementById('content');
   c.innerHTML = '<div class="flex items-center justify-center h-full"><span class="text-gray-600">Carregando...</span></div>';
-  if      (state.page === 'login')    await renderLoginPage();
-  else if (state.page === 'events')   await renderEventsPage();
+  if      (state.page === 'events')   await renderEventsPage();
   else if (state.page === 'servicos') await renderServicosPage();
   else if (state.page === 'listar')   await renderListarPage();
   else if (state.page === 'run')      await renderRunPage();
@@ -1798,12 +1663,10 @@ async function renderPage() {
 // ── Session / logout ───────────────────────────────────────
 async function logoutSession() {
   try { await api.post('/api/session-logout', {}); } catch { /* ignore */ }
-  if (_sessionKeepAliveTimer) clearInterval(_sessionKeepAliveTimer);
   const userInfo = document.getElementById('user-info');
   userInfo?.classList.add('hidden');
   userInfo?.classList.remove('flex');
   document.getElementById('user-name-display').textContent = '';
-  await navigate('login');
 }
 
 // ── API status ─────────────────────────────────────────────
@@ -1903,23 +1766,8 @@ async function checkApiStatus() {
 
 // ── Init ───────────────────────────────────────────────────
 (async () => {
-  setShellMode('login');
-  document.getElementById('content').innerHTML = '<div class="login-screen"><div class="login-loading">Verificando sessao...</div></div>';
+  navigate('events');
   startSessionKeepAlive();
-  try {
-    await api.get('/api/health');
-    const sess = await api.get('/api/session-status');
-    if (sess && sess.logged_in) {
-      _applySessionStatus(sess);
-      setShellMode('app');
-      await navigate('events');
-    } else {
-      await renderLoginPage();
-      _pollSessionUntilLoggedIn(0);
-    }
-  } catch {
-    await renderLoginPage('API indisponivel. Tente novamente em alguns segundos.');
-  }
   checkApiStatus();
   loadOptions();
 })();
