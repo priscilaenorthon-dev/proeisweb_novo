@@ -1656,16 +1656,21 @@ class ProeisHTTP:
             _log("VAGA", "dry_run=true: marcacao nao confirmada.")
             return
         _log("VAGA", f"Clicando em 'Eu Vou': '{chosen.label[:80]}' (acao={chosen.action})...")
+        reserva_vaga = "reserva" in norm(chosen.label)
         if chosen.action == "postback":
             # Resolve captcha novo tambem aqui (o site exige no clique de participar).
             payload = self.form_payload(soup)
             self.fill_page_captcha(soup, payload)
+            if reserva_vaga:
+                self.set_reserva_checkbox(soup, payload, True)
             payload["__EVENTTARGET"] = chosen.payload["target"]
             payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
             soup = self.post_form(payload)
         elif chosen.action == "submit":
             payload = dict(chosen.payload)
             self.fill_page_captcha(soup, payload)
+            if reserva_vaga:
+                self.set_reserva_checkbox(soup, payload, True)
             soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
@@ -1831,17 +1836,23 @@ class ProeisHTTP:
             _log("VAGA", "dry_run=true: nao cliquei em Eu Vou.")
             return False
         _log("VAGA", f"Clicando em 'Eu Vou' (acao={chosen.action})...")
+        # Vaga RESERVA exige o checkbox 'Aceita vaga reserva' marcado no clique.
+        reserva_vaga = "reserva" in norm(chosen.label)
         if chosen.action == "postback":
             # O PROEIS exige um captcha NOVO tambem no clique de "Eu Vou"/participar.
             # Sem isso, o site rejeita e volta para a tela de filtros (marcacao nao confirma).
             payload = self.form_payload(soup)
             self.fill_page_captcha(soup, payload)
+            if reserva_vaga:
+                self.set_reserva_checkbox(soup, payload, True)
             payload["__EVENTTARGET"] = chosen.payload["target"]
             payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
             soup = self.post_form(payload)
         elif chosen.action == "submit":
             payload = dict(chosen.payload)
             self.fill_page_captcha(soup, payload)
+            if reserva_vaga:
+                self.set_reserva_checkbox(soup, payload, True)
             soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
