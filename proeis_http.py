@@ -776,7 +776,7 @@ class ProeisHTTP:
         model_lc = model.lower()
         env_budget: int | None = None
         if "flash" in model_lc:
-            env_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "1024"))
+            env_budget = int(os.getenv("GEMINI_FLASH_THINKING_BUDGET", "0"))
         elif os.getenv("GEMINI_PRO_THINKING_BUDGET"):
             env_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "0"))
         effective_budget = thinking_budget if thinking_budget > 0 else (env_budget or 0)
