@@ -6,3 +6,5 @@ truststore==0.10.4
 python-multipart==0.0.20
 google-cloud-firestore==2.21.0
 Pillow==11.2.1
+numpy==2.2.6
+opencv-python-headless==4.11.0.86

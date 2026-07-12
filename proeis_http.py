@@ -30,6 +30,37 @@ try:
 except ImportError:
     _PIL_AVAILABLE = False
 
+try:
+    import cv2 as _cv2
+    import numpy as _np
+    _CV2_AVAILABLE = True
+except ImportError:
+    _CV2_AVAILABLE = False
+
+
+def _clean_captcha_cv2(image_bytes: bytes) -> bytes | None:
+    """Limpeza avançada via OpenCV: remove bolinhas coloridas (alta saturação),
+    realça o texto fraco (CLAHE) e reduz ruído. Retorna PNG em bytes ou None."""
+    if not _CV2_AVAILABLE:
+        return None
+    try:
+        arr = _np.frombuffer(image_bytes, _np.uint8)
+        img = _cv2.imdecode(arr, _cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        img = _cv2.resize(img, None, fx=3, fy=3, interpolation=_cv2.INTER_CUBIC)
+        hsv = _cv2.cvtColor(img, _cv2.COLOR_BGR2HSV)
+        sat = hsv[:, :, 1]
+        img[sat > 110] = (255, 255, 255)  # bolinhas coloridas -> branco
+        gray = _cv2.cvtColor(img, _cv2.COLOR_BGR2GRAY)
+        clahe = _cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+        gray = _cv2.medianBlur(gray, 3)
+        ok, buf = _cv2.imencode(".png", gray)
+        return buf.tobytes() if ok else None
+    except Exception:
+        return None
+
 
 def _otsu_threshold(gray: "Image.Image") -> int:
     """Calcula o limiar de Otsu a partir do histograma (sem numpy)."""
@@ -66,12 +97,18 @@ def _preprocess_captcha_image(image_bytes: bytes, mode: str | None = None) -> by
       - 'v1'       : original — cinza + autocontraste + sharpen 2x + upscale 2x
       - 'denoise'  : cinza + autocontraste + median denoise + upscale 3x + sharpen
       - 'binarize' : denoise + binarização por Otsu (texto preto / fundo branco)
+      - 'clean'    : OpenCV — remove bolinhas por saturação + CLAHE (melhor leitura)
       - 'off'      : não altera
     """
-    if not _PIL_AVAILABLE:
-        return image_bytes
     mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "v1")).strip().lower()
     if mode == "off":
+        return image_bytes
+    if mode == "clean":
+        cleaned = _clean_captcha_cv2(image_bytes)
+        if cleaned is not None:
+            return cleaned
+        mode = "binarize"  # fallback quando OpenCV indisponível
+    if not _PIL_AVAILABLE:
         return image_bytes
     try:
         img = Image.open(_io.BytesIO(image_bytes))
