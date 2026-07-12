@@ -31,8 +31,47 @@ except ImportError:
     _PIL_AVAILABLE = False
 
 
-def _preprocess_captcha_image(image_bytes: bytes) -> bytes:
+def _otsu_threshold(gray: "Image.Image") -> int:
+    """Calcula o limiar de Otsu a partir do histograma (sem numpy)."""
+    hist = gray.histogram()[:256]
+    total = sum(hist)
+    if total == 0:
+        return 128
+    sum_all = sum(i * hist[i] for i in range(256))
+    sum_b = 0.0
+    w_b = 0
+    max_var = -1.0
+    threshold = 128
+    for t in range(256):
+        w_b += hist[t]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+        sum_b += t * hist[t]
+        m_b = sum_b / w_b
+        m_f = (sum_all - sum_b) / w_f
+        var_between = w_b * w_f * (m_b - m_f) ** 2
+        if var_between > max_var:
+            max_var = var_between
+            threshold = t
+    return threshold
+
+
+def _preprocess_captcha_image(image_bytes: bytes, mode: str | None = None) -> bytes:
+    """Pré-processa a imagem do captcha para melhorar a leitura pelo OCR/Gemini.
+
+    Modos (env CAPTCHA_PREPROCESS, padrão 'v1'):
+      - 'v1'       : original — cinza + autocontraste + sharpen 2x + upscale 2x
+      - 'denoise'  : cinza + autocontraste + median denoise + upscale 3x + sharpen
+      - 'binarize' : denoise + binarização por Otsu (texto preto / fundo branco)
+      - 'off'      : não altera
+    """
     if not _PIL_AVAILABLE:
+        return image_bytes
+    mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "v1")).strip().lower()
+    if mode == "off":
         return image_bytes
     try:
         img = Image.open(_io.BytesIO(image_bytes))
@@ -43,12 +82,27 @@ def _preprocess_captcha_image(image_bytes: bytes) -> bytes:
         else:
             img = img.convert("RGB")
         img = img.convert("L")
-        img = ImageOps.autocontrast(img, cutoff=5)
-        img = img.filter(ImageFilter.SHARPEN)
-        img = img.filter(ImageFilter.SHARPEN)
-        w, h = img.size
-        if w < 300:
-            img = img.resize((w * 2, h * 2), Image.LANCZOS)
+
+        if mode == "v1":
+            img = ImageOps.autocontrast(img, cutoff=5)
+            img = img.filter(ImageFilter.SHARPEN)
+            img = img.filter(ImageFilter.SHARPEN)
+            w, h = img.size
+            if w < 300:
+                img = img.resize((w * 2, h * 2), Image.LANCZOS)
+        else:
+            # denoise / binarize compartilham a base de limpeza de ruído colorido
+            img = ImageOps.autocontrast(img, cutoff=2)
+            img = img.filter(ImageFilter.MedianFilter(size=3))  # remove pontinhos
+            w, h = img.size
+            scale = 3 if w < 260 else 2
+            img = img.resize((w * scale, h * scale), Image.LANCZOS)
+            if mode == "binarize":
+                thr = _otsu_threshold(img)
+                img = img.point(lambda p, t=thr: 0 if p < t else 255, mode="L")
+            else:  # denoise
+                img = img.filter(ImageFilter.SHARPEN)
+
         img = img.convert("RGB")
         buf = _io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -731,13 +785,14 @@ class ProeisHTTP:
         stop_event: threading.Event | None = None,
         model: str | None = None,
         thinking_budget: int = 0,
+        preprocess: str | None = None,
     ) -> CaptchaSubmission:
         """Resolve captcha usando Gemini via visao computacional."""
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
         model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        processed = _preprocess_captcha_image(image)
+        processed = _preprocess_captcha_image(image, mode=preprocess)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
         parts: list[dict[str, Any]] = [

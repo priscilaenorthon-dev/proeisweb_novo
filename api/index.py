@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -1665,13 +1666,17 @@ async def captcha_bench(request: Request):
 
                 for idx, (source, img) in enumerate(all_items):
                     row: dict = {"source": source, "i": idx + 1, "configs": {}}
+                    # inclui a imagem crua (base64) das primeiras para leitura de gabarito
+                    if idx < int(body.get("return_images", 8)):
+                        row["img_b64"] = base64.b64encode(img).decode("ascii")
                     for cfg in configs:
                         model  = cfg.get("model", "gemini-2.5-flash")
                         budget = int(cfg.get("budget", 0))
+                        preprocess = cfg.get("preprocess")
                         label  = str(cfg.get("label") or f"{model.split('gemini-')[-1]}-b{budget}")
                         t0 = time.monotonic()
                         try:
-                            res = client._solve_via_gemini_result(img, model=model, thinking_budget=budget)
+                            res = client._solve_via_gemini_result(img, model=model, thinking_budget=budget, preprocess=preprocess)
                             elapsed = round(time.monotonic() - t0, 2)
                             raw = res.text.strip()
                             norm = normalize_captcha_answer(raw)
