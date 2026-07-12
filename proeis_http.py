@@ -100,7 +100,7 @@ def _preprocess_captcha_image(image_bytes: bytes, mode: str | None = None) -> by
       - 'clean'    : OpenCV — remove bolinhas por saturação + CLAHE (melhor leitura)
       - 'off'      : não altera
     """
-    mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "v1")).strip().lower()
+    mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "clean")).strip().lower()
     if mode == "off":
         return image_bytes
     if mode == "clean":
@@ -1657,9 +1657,16 @@ class ProeisHTTP:
             return
         _log("VAGA", f"Clicando em 'Eu Vou': '{chosen.label[:80]}' (acao={chosen.action})...")
         if chosen.action == "postback":
-            soup = self.postback(chosen.payload["target"], chosen.payload.get("argument", ""))
+            # Resolve captcha novo tambem aqui (o site exige no clique de participar).
+            payload = self.form_payload(soup)
+            self.fill_page_captcha(soup, payload)
+            payload["__EVENTTARGET"] = chosen.payload["target"]
+            payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
+            soup = self.post_form(payload)
         elif chosen.action == "submit":
-            soup = self.post_form(chosen.payload)
+            payload = dict(chosen.payload)
+            self.fill_page_captcha(soup, payload)
+            soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
         self.confirm_if_needed(soup)
@@ -1825,13 +1832,22 @@ class ProeisHTTP:
             return False
         _log("VAGA", f"Clicando em 'Eu Vou' (acao={chosen.action})...")
         if chosen.action == "postback":
-            soup = self.postback(chosen.payload["target"], chosen.payload.get("argument", ""))
+            # O PROEIS exige um captcha NOVO tambem no clique de "Eu Vou"/participar.
+            # Sem isso, o site rejeita e volta para a tela de filtros (marcacao nao confirma).
+            payload = self.form_payload(soup)
+            self.fill_page_captcha(soup, payload)
+            payload["__EVENTTARGET"] = chosen.payload["target"]
+            payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
+            soup = self.post_form(payload)
         elif chosen.action == "submit":
-            soup = self.post_form(chosen.payload)
+            payload = dict(chosen.payload)
+            self.fill_page_captcha(soup, payload)
+            soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
         success = self.confirm_if_needed(soup)
         if success:
+            self.report_good_captcha()
             emit_vaga(chosen.label, data_evento=data_evento, acao="Clicado Eu vou")
         return success
 
