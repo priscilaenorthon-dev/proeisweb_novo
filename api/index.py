@@ -53,7 +53,6 @@ class RunRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-    twocaptcha_key: str = ""
     gemini_model: str = ""
     # Parametros do evento
     convenio: str = ""
@@ -97,7 +96,6 @@ class BatchRunRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-    twocaptcha_key: str = ""
     gemini_model: str = ""
     http_attempts: int = 0
     connect_timeout: int = 0
@@ -116,7 +114,6 @@ class ListVagasRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-    twocaptcha_key: str = ""
     gemini_model: str = ""
     convenio: str = ""
     cpa: str = ""
@@ -178,9 +175,9 @@ def _apply_runtime_options(body: RunRequest) -> None:
     if getattr(body, "filter_max_attempts", 0) > 0:
         os.environ["FILTER_MAX_ATTEMPTS"] = str(body.filter_max_attempts)
     if getattr(body, "captcha_invalid_retries", 0) > 0:
-        os.environ["TWOCAPTCHA_INVALID_RETRIES"] = str(body.captcha_invalid_retries)
+        os.environ["CAPTCHA_INVALID_RETRIES"] = str(body.captcha_invalid_retries)
     if getattr(body, "captcha_refresh_after_invalids", 0) > 0:
-        os.environ["TWOCAPTCHA_REFRESH_AFTER_INVALIDS"] = str(body.captcha_refresh_after_invalids)
+        os.environ["CAPTCHA_REFRESH_AFTER_INVALIDS"] = str(body.captcha_refresh_after_invalids)
     if getattr(body, "gemini_timeout", 0) > 0:
         os.environ["GEMINI_TIMEOUT"] = str(body.gemini_timeout)
     if getattr(body, "auto_retry_rounds", 0) > 0:
@@ -496,7 +493,6 @@ class TestLoginRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-    twocaptcha_key: str = ""
 
 @app.get("/api/health")
 def health():
@@ -525,7 +521,6 @@ async def test_login(body: TestLoginRequest):
         client = ProeisHTTP(
             login=login_val,
             password=pwd_val,
-            twocaptcha_key=body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", ""),
             gemini_api_key=gemini_key,
             debug=False,
         )
@@ -582,7 +577,7 @@ def get_servicos_marcados(body: ServicosRequest):
     try:
         client = ProeisHTTP(
             login=login_val, password=pwd_val,
-            twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
+            gemini_api_key=gemini_key, debug=False,
         )
         session_restored = _try_restore_session(client)
         if not session_restored:
@@ -627,8 +622,8 @@ def get_env_defaults():
         "connect_timeout":     _int("PROEIS_CONNECT_TIMEOUT"),
         "read_timeout":        _int("PROEIS_READ_TIMEOUT"),
         "filter_max_attempts": _int("FILTER_MAX_ATTEMPTS"),
-        "captcha_invalid_retries": _int("TWOCAPTCHA_INVALID_RETRIES"),
-        "captcha_refresh_after_invalids": _int("TWOCAPTCHA_REFRESH_AFTER_INVALIDS"),
+        "captcha_invalid_retries": _int("CAPTCHA_INVALID_RETRIES"),
+        "captcha_refresh_after_invalids": _int("CAPTCHA_REFRESH_AFTER_INVALIDS"),
         "gemini_timeout": _int("GEMINI_TIMEOUT"),
         "auto_retry_rounds": _int("PROEIS_AUTO_RETRY_ROUNDS"),
         "auto_retry_wait_seconds": _int("PROEIS_AUTO_RETRY_WAIT_SECONDS"),
@@ -705,7 +700,6 @@ async def run_automation(body: RunRequest):
     login_val = body.login or os.getenv("PROEIS_LOGIN", "")
     password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
     op_id = uuid.uuid4().hex[:8]
     ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -746,7 +740,6 @@ async def run_automation(body: RunRequest):
                 client = ProeisHTTP(
                     login=login_val,
                     password=password_val,
-                    twocaptcha_key=twocaptcha,
                     gemini_api_key=gemini_key,
                 )
 
@@ -899,7 +892,6 @@ async def run_batch_fast(body: BatchRunRequest):
     login_val = body.login or os.getenv("PROEIS_LOGIN", "")
     password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
     with _batch_guard:
         active = _current_batch.get("run")
@@ -992,7 +984,6 @@ async def run_batch_fast(body: BatchRunRequest):
                 client = ProeisHTTP(
                     login=login_val,
                     password=password_val,
-                    twocaptcha_key=twocaptcha,
                     gemini_api_key=gemini_key,
                 )
 
@@ -1084,7 +1075,6 @@ async def list_vagas(body: ListVagasRequest):
     login_val = body.login or os.getenv("PROEIS_LOGIN", "")
     password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
     op_id = uuid.uuid4().hex[:8]
     ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1120,7 +1110,6 @@ async def list_vagas(body: ListVagasRequest):
                 client = ProeisHTTP(
                     login=login_val,
                     password=password_val,
-                    twocaptcha_key=twocaptcha,
                     gemini_api_key=gemini_key,
                 )
 
@@ -1298,7 +1287,6 @@ def _trigger_warmup_login() -> None:
             client = ProeisHTTP(
                 login=login_val,
                 password=password_val,
-                twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
                 gemini_api_key=gemini_key,
             )
             if not _try_restore_session(client):
@@ -1338,7 +1326,6 @@ def session_status():
         client = ProeisHTTP(
             login=login_val,
             password=password_val,
-            twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
             gemini_api_key=gemini_key,
             debug=False,
         )
@@ -1370,7 +1357,6 @@ def session_keepalive_web(body: TestLoginRequest):
     login_val = body.login or os.getenv("PROEIS_LOGIN", "")
     password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
     if not login_val or not password_val or not gemini_key:
         return {"ok": False, "status": "sem_credenciais"}
@@ -1381,7 +1367,6 @@ def session_keepalive_web(body: TestLoginRequest):
             client = ProeisHTTP(
                 login=login_val,
                 password=password_val,
-                twocaptcha_key=twocaptcha,
                 gemini_api_key=gemini_key,
                 debug=False,
             )
@@ -1439,7 +1424,7 @@ async def captcha_bench(request: Request):
             try:
                 client = ProeisHTTP(
                     login=login_val, password=pwd_val,
-                    twocaptcha_key="", gemini_api_key=gemini_key, debug=False,
+                    gemini_api_key=gemini_key, debug=False,
                 )
 
                 # ── Collect login captchas ───────────────────────────────────────

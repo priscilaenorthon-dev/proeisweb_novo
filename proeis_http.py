@@ -412,10 +412,9 @@ def emit_vaga(label: str, data_evento: str = "", acao: str = "Visualizacao") -> 
 # â"€â"€ Cliente HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 class ProeisHTTP:
-    def __init__(self, login: str, password: str, twocaptcha_key: str, gemini_api_key: str = "", debug: bool = True):
+    def __init__(self, login: str, password: str, gemini_api_key: str = "", debug: bool = True):
         self.login = login
         self.password = password
-        self.twocaptcha_key = twocaptcha_key
         self.gemini_api_key = gemini_api_key
         self.debug = debug
         self.bad_captcha_reports = 0
@@ -655,7 +654,7 @@ class ProeisHTTP:
         return image_bytes
 
     def solve_captcha(self, image: bytes) -> str:
-        attempts = int(os.getenv("TWOCAPTCHA_INVALID_RETRIES", "2")) + 1
+        attempts = int(os.getenv("CAPTCHA_INVALID_RETRIES", "2")) + 1
         last_error = ""
         for attempt in range(1, attempts + 1):
             try:
@@ -668,8 +667,8 @@ class ProeisHTTP:
         raise AutomationError(last_error or "Solver nao retornou uma resposta valida.")
 
     def solve_page_captcha(self, soup: BeautifulSoup, refresh_after_invalids: int | None = None) -> tuple[BeautifulSoup, str]:
-        max_attempts = int(os.getenv("TWOCAPTCHA_INVALID_RETRIES", "2")) + 1
-        refresh_after_invalids = refresh_after_invalids or int(os.getenv("TWOCAPTCHA_REFRESH_AFTER_INVALIDS", "1"))
+        max_attempts = int(os.getenv("CAPTCHA_INVALID_RETRIES", "2")) + 1
+        refresh_after_invalids = refresh_after_invalids or int(os.getenv("CAPTCHA_REFRESH_AFTER_INVALIDS", "1"))
         refresh_after_invalids = max(1, refresh_after_invalids)
         invalid_streak = 0
         last_error = ""
@@ -2826,7 +2825,6 @@ def main() -> int:
     client = ProeisHTTP(
         login=required_env("PROEIS_LOGIN"),
         password=required_env("PROEIS_PASSWORD"),
-        twocaptcha_key="",
         gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         debug=not args.no_debug,
     )

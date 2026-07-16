@@ -142,7 +142,6 @@ Documento único `"current"` com os campos:
 client = ProeisHTTP(
     login="123456",
     password="senha",
-    twocaptcha_key="",        # opcional
     gemini_api_key="AIza...", # obrigatório para resolver captcha
     debug=True,
 )
@@ -180,7 +179,7 @@ client = ProeisHTTP(
 | Método | Descrição |
 |--------|-----------|
 | `extract_captcha_image(soup) → str` | Extrai imagem base64 do captcha da página |
-| `solve_captcha(image) → CaptchaSubmission` | Resolve via Gemini + 2Captcha em paralelo |
+| `solve_captcha(image) → CaptchaSubmission` | Resolve via Gemini |
 | `solve_page_captcha(soup) → (soup, texto)` | Resolve captcha na página com retry automático |
 | `report_bad_captcha()` | Reporta captcha errado ao serviço (para treino) |
 
@@ -232,7 +231,7 @@ class Candidate:
 class CaptchaSubmission:
     text: str             # Resposta do captcha
     captcha_id: str|None  # ID no serviço externo (para reportar erro)
-    solver_index: int     # 0=Gemini, 1=2Captcha
+    solver_index: int     # 0=Gemini
     confidence: float     # Confiança (0.0–1.0)
 ```
 
@@ -373,7 +372,6 @@ class RunRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-    twocaptcha_key: str = ""
     gemini_model: str = ""
 
     # Evento alvo (obrigatórios: convenio e cpa)
@@ -457,7 +455,6 @@ GEMINI_API_KEY=AIzaSy...
 ### Opcionais de serviço
 
 ```env
-TWOCAPTCHA_API_KEY=          # Solver alternativo de captcha
 GEMINI_MODEL=gemini-2.5-flash       # Padrão atual
 CORS_ORIGINS=*
 ```
@@ -478,8 +475,8 @@ PROEIS_HTTP_ATTEMPTS=2
 PROEIS_CONNECT_TIMEOUT=8
 PROEIS_READ_TIMEOUT=25
 FILTER_MAX_ATTEMPTS=8        # Tentativas de filtro com captcha por data
-TWOCAPTCHA_INVALID_RETRIES=2
-TWOCAPTCHA_REFRESH_AFTER_INVALIDS=1
+CAPTCHA_INVALID_RETRIES=2
+CAPTCHA_REFRESH_AFTER_INVALIDS=1
 GEMINI_TIMEOUT=30
 ```
 
@@ -544,7 +541,7 @@ const state = {
 
 ```js
 {
-  login, password, gemini_api_key, twocaptcha_key,
+  login, password, gemini_api_key,
   convenio, cpa,
   http_attempts, connect_timeout, read_timeout,
   filter_max_attempts, captcha_invalid_retries,
@@ -572,7 +569,7 @@ O PROEIS exige captcha em **cada submissão de filtro** (uma por data pesquisada
 ### Solvers disponíveis
 
 1. **Gemini 2.5 Flash** (padrão, obrigatório) — visão computacional via Google AI Studio
-2. **2Captcha** (opcional) — serviço pago, usado em paralelo
+
 
 ### Estratégia multi-solver
 

@@ -1251,7 +1251,6 @@ function settingsToBody(s) {
     login:               s.login,
     password:            s.password,
     gemini_api_key:      s.gemini_api_key,
-    twocaptcha_key:      s.twocaptcha_key || '',
     gemini_model:        s.gemini_model || '',
     http_attempts:       s.http_attempts || 0,
     connect_timeout:     s.connect_timeout || 0,
