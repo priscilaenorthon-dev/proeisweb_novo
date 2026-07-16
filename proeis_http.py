@@ -1463,24 +1463,15 @@ class ProeisHTTP:
             if date_total == 0:
                 _log("VAGA", f"Nenhuma vaga encontrada em '{label}'.")
 
-            # A pagina de resultados mantem o formulario completo (mesmo mecanismo
-            # ja usado entre as consultas reserva/nao-reserva), entao a proxima data
-            # pode ser consultada direto — sem renavegar (economiza 2 POSTs por data).
-            # So renavega se o formulario tiver sumido da pagina atual.
-            try:
-                fields_ok = self.find_fields(soup)
-                if "data" not in fields_ok or "cpa" not in fields_ok:
-                    raise AutomationError("Formulario de filtros ausente na pagina atual.")
-            except Exception:
-                _log("NAV", f"Formulario ausente; retornando a tela de servicos ({i}/{len(dates)})...")
-                self.navigate_to_service_page()
-                soup = self.require_soup()
-                payload = self.form_payload(soup)
-                fields = self.find_fields(soup)
-                self.set_field(payload, fields, "convenio", convenio)
-                payload["__EVENTTARGET"] = fields["convenio"]
-                payload["__EVENTARGUMENT"] = ""
-                soup = self.post_form(payload)
+            _log("NAV", f"Retornando a tela de servicos para proxima data ({i}/{len(dates)})...")
+            self.navigate_to_service_page()
+            soup = self.require_soup()
+            payload = self.form_payload(soup)
+            fields = self.find_fields(soup)
+            self.set_field(payload, fields, "convenio", convenio)
+            payload["__EVENTTARGET"] = fields["convenio"]
+            payload["__EVENTARGUMENT"] = ""
+            soup = self.post_form(payload)
 
         _log("VAGA", f"Varredura concluida: {total} vaga(s) encontrada(s) no total.")
         print(f"[VAGAS] Varredura concluida: {total} vaga(s) encontrada(s) no total.")
