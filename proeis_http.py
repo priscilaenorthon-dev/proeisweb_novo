@@ -1813,16 +1813,25 @@ class ProeisHTTP:
                     _log("VAGA", f"  opcao ignorada pelos filtros: {c.label[:240]}")
             if not candidates:
                 self.log_unmatched_action_rows(soup, prefer)
-            # Mensagem de erro mais informativa quando o filtro de hora eliminou tudo
+            # Mensagem de erro mais informativa quando o filtro de hora eliminou tudo.
+            # As horas so sao sugeridas a partir de vagas do MESMO evento (filtro de
+            # nome); listar horas de outros eventos da data induzia a "corrigir" um
+            # cadastro que estava certo quando a vaga apenas nao existia na data.
             detail = ""
             if hora_evento and active_filters.get("hora") and candidates:
                 from re import findall as _findall
+                mesmo_evento = [
+                    c for c in candidates
+                    if self.event_matches(c.label, nome_evento, "", "", "")
+                ] if nome_evento else candidates
                 horas_disp = sorted({
-                    m for c in candidates
+                    m for c in mesmo_evento
                     for m in _findall(r'\b\d{1,2}:\d{2}(?::\d{2})?\b', c.label)
                 })
                 if horas_disp:
-                    detail = f" Horas disponíveis nessa data: {', '.join(horas_disp)}. Ajuste a hora no cadastro do evento."
+                    detail = f" Horas disponíveis desse evento nessa data: {', '.join(horas_disp)}. Ajuste a hora no cadastro do evento."
+                elif nome_evento:
+                    detail = " Nenhuma vaga desse evento nessa data (esgotada ou nao publicada); o cadastro pode estar certo."
             raise AutomationError(f"Nao encontrei a linha exata do evento solicitado.{detail}")
         chosen = filtered[0]
         for pos, candidate in enumerate(filtered[:5], 1):
