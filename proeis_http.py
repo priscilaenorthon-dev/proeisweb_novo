@@ -871,6 +871,10 @@ class ProeisHTTP:
         elif os.getenv("GEMINI_PRO_THINKING_BUDGET"):
             env_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "0"))
         effective_budget = thinking_budget if thinking_budget > 0 else (env_budget or 0)
+        # gemini-2.5-pro nao aceita thinkingBudget=0 (HTTP 400 "Budget 0 is invalid");
+        # quando nenhum budget foi configurado para um modelo pro, usa o minimo aceito.
+        if "2.5-pro" in model_lc and effective_budget <= 0:
+            effective_budget = int(os.getenv("GEMINI_PRO_THINKING_BUDGET", "128"))
         max_output_tokens = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "32"))
         if effective_budget and "GEMINI_MAX_OUTPUT_TOKENS" not in os.environ:
             max_output_tokens = effective_budget + 64
