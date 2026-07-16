@@ -4,20 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>PROEIS Bot</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=20260603-12" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="/styles.css?v=20260608-login-01" />
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            teal: { 400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488' },
-          },
-        },
-      },
-    };
-  </script>
+  <meta name="theme-color" content="#030712" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PROEIS Bot" />
+  <link rel="manifest" href="/manifest.webmanifest?v=1" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1" />
+  <link rel="apple-touch-icon" href="/icon-180.png?v=1" />
+  <link rel="stylesheet" href="/tailwind.css?v=1" />
+  <link rel="stylesheet" href="/styles.css?v=1" />
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen flex overflow-hidden app-shell">
 
@@ -25,32 +21,32 @@
   <aside id="sidebar" class="w-60 shrink-0 bg-gray-900 flex flex-col border-r border-gray-800 h-screen">
     <div class="p-5 border-b border-gray-800">
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-teal-600 flex items-center justify-center text-lg">ðŸ¤–</div>
+        <div class="w-9 h-9 rounded-lg bg-teal-600 flex items-center justify-center text-lg proeis-logo"><svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><path d="M16 46V16h15c7 0 12 4 12 10s-5 10-12 10h-7v10h-8Zm8-17h7c3 0 5-1 5-3s-2-3-5-3h-7v6Z" fill="#08111f"/><path d="M43 18h6v28h-6z" fill="#fff"/><circle cx="49" cy="13" r="4" fill="#facc15"/></svg></div>
         <div>
           <h1 class="font-bold text-white text-base leading-none">PROEIS Bot</h1>
-          <p class="text-xs text-gray-500 mt-0.5">AutomaÃ§Ã£o RJ</p>
+          <p class="text-xs text-gray-500 mt-0.5">Automação RJ</p>
         </div>
       </div>
     </div>
 
     <nav class="flex-1 p-3 space-y-1">
       <button onclick="navigate('events')" id="nav-events" class="nav-item w-full">
-        <span class="text-base">ðŸ“‹</span><span>Eventos</span>
+        <span class="nav-icon">📋</span><span class="nav-label">Eventos</span>
       </button>
       <button onclick="navigate('servicos')" id="nav-servicos" class="nav-item w-full">
-        <span class="text-base">ðŸ“…</span><span>ServiÃ§os Marcados</span>
+        <span class="nav-icon">📅</span><span class="nav-label">Serviços</span>
       </button>
       <button onclick="navigate('listar')" id="nav-listar" class="nav-item w-full">
-        <span class="text-base">ðŸ”</span><span>Listar Vagas</span>
+        <span class="nav-icon">🔍</span><span class="nav-label">Vagas</span>
       </button>
       <button onclick="navigate('run')" id="nav-run" class="nav-item w-full">
-        <span class="text-base">â–¶ï¸</span><span>Executar</span>
+        <span class="nav-icon">▶️</span><span class="nav-label">Executar</span>
       </button>
       <button onclick="navigate('settings')" id="nav-settings" class="nav-item w-full">
-        <span class="text-base">âš™ï¸</span><span>ConfiguraÃ§Ãµes</span>
+        <span class="nav-icon">⚙️</span><span class="nav-label">Config</span>
       </button>
       <button onclick="navigate('help')" id="nav-help" class="nav-item w-full">
-        <span class="text-base">?</span><span>Como usar</span>
+        <span class="nav-icon">❓</span><span class="nav-label">Ajuda</span>
       </button>
     </nav>
 
@@ -69,7 +65,7 @@
     </div>
   </aside>
 
-  <!-- ConteÃºdo principal -->
+  <!-- Conteúdo principal -->
   <main id="main-content" class="flex-1 overflow-auto h-screen">
     <div id="content" class="h-full"></div>
   </main>
@@ -79,7 +75,7 @@
     <div id="modal-box" class="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl"></div>
   </div>
 
-  <script src="/app.js?v=20260608-login-01"></script>
-  <script src="/proeis-fixes.js?v=20260608-login-01"></script>
+  <script src="/app.js?v=1"></script>
+  <script src="/proeis-fixes.js?v=1"></script>
 </body>
 </html>

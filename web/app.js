@@ -614,7 +614,7 @@ async function renderRunPage() {
           <div class="card flex flex-col" style="flex:1; min-height:360px">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-semibold text-white">Log</span>
-              <button onclick="clearLog()" class="text-xs text-gray-600 hover:text-gray-400 transition">Limpar</button>
+              <span class="flex items-center gap-3"><button onclick="toggleLogDetail()" class="log-mode-btn text-xs text-teal-500 hover:text-teal-300 transition"></button><button onclick="clearLog()" class="text-xs text-gray-600 hover:text-gray-400 transition">Limpar</button></span>
             </div>
             <div id="log-el" class="terminal flex-1 overflow-auto">
               <span class="text-gray-600">Aguardando execução...</span>
@@ -683,7 +683,7 @@ async function renderListarPage() {
           <div class="card flex flex-col listar-log-card" style="min-height:200px; max-height:260px">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-semibold text-white">Log</span>
-              <button onclick="clearListLog()" class="text-xs text-gray-600 hover:text-gray-400">Limpar</button>
+              <span class="flex items-center gap-3"><button onclick="toggleLogDetail()" class="log-mode-btn text-xs text-teal-500 hover:text-teal-300"></button><button onclick="clearListLog()" class="text-xs text-gray-600 hover:text-gray-400">Limpar</button></span>
             </div>
             <div id="list-log-el" class="terminal flex-1 overflow-auto">
               <span class="text-gray-600">Selecione convênio e CPA e clique em Listar...</span>
@@ -730,12 +730,38 @@ async function renderListarPage() {
   }
 }
 
+// Linhas tecnicas (HTTP/FORM/CAPTCHA/NAV...) viram "detalhe": ocultas no modo
+// resumido (padrao no celular), visiveis no modo detalhado ou apos o toggle.
+const _DETAIL_TAG_RE = /\[(HTTP|FORM|CAPTCHA|NAV|FILTRO|PERF|SESSION)\s*\]/i;
+function _isDetailLine(text) {
+  if (/ERRO|AVISO|CONFIRMAD|recusad/i.test(text)) return false;
+  return _DETAIL_TAG_RE.test(text);
+}
+
+function logDetailEnabled() {
+  const stored = localStorage.getItem('log_detail');
+  if (stored !== null) return stored === '1';
+  return window.innerWidth > 640;
+}
+
+function applyLogMode() {
+  document.body.classList.toggle('log-compact', !logDetailEnabled());
+  document.querySelectorAll('.log-mode-btn').forEach(b => {
+    b.textContent = logDetailEnabled() ? 'Resumir' : 'Detalhes';
+  });
+}
+
+function toggleLogDetail() {
+  localStorage.setItem('log_detail', logDetailEnabled() ? '0' : '1');
+  applyLogMode();
+}
+
 function _appendToLog(el, text, cls) {
   if (!el) return;
   const atBottom = el.scrollHeight - el.clientHeight <= el.scrollTop + 20;
   if (el.querySelector('span')) el.innerHTML = '';
   const d = document.createElement('div');
-  d.className = `log-line ${cls}`;
+  d.className = `log-line ${cls}${_isDetailLine(text) ? ' log-detail' : ''}`;
   d.textContent = text;
   el.appendChild(d);
   if (atBottom) el.scrollTop = el.scrollHeight;
@@ -1552,6 +1578,7 @@ async function renderPage() {
     state.page = 'help';
     await renderHelpPage();
   }
+  applyLogMode();
 }
 
 // ── Session / logout ───────────────────────────────────────

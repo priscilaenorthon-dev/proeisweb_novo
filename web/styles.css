@@ -970,21 +970,50 @@ input[type="checkbox"] {
     height: 34px;
   }
 
+  /* Barra de abas fixa no rodape: todos os itens visiveis, ao alcance do polegar */
   #sidebar nav {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    padding: 6px 10px;
-    gap: 6px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: #0b1220;
+    border-top: 1px solid #1f2937;
+    overflow: hidden;
   }
 
   #sidebar nav .nav-item {
-    flex: 0 0 auto;
-    min-width: max-content;
-    min-height: 44px;
-    padding: 8px 12px;
-    font-size: 0.8rem;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
+    gap: 2px;
+    min-width: 0;
+    min-height: 50px;
+    padding: 5px 2px;
+    font-size: 0.6rem;
+    border-radius: 10px;
+  }
+
+  #sidebar nav .nav-item .nav-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  #sidebar nav .nav-item .nav-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Conteudo nao pode ficar escondido atras da barra */
+  #main-content {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom));
   }
 
   #content > .p-6,
@@ -1198,3 +1227,8 @@ input[type="checkbox"] {
     min-width: 380px;
   }
 }
+
+/* ── Log resumido ─────────────────────────────────────────── */
+/* Linhas tecnicas ([HTTP], [FORM], [CAPTCHA]...) ficam ocultas no modo
+   resumido — padrao no celular; o botao Detalhes/Resumir alterna. */
+body.log-compact .log-line.log-detail { display: none; }

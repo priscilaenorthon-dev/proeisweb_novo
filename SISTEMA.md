@@ -30,7 +30,7 @@ proeisweb_novo/
 
 **Stack:**
 - Backend: Python 3.11+ / FastAPI / Uvicorn
-- Frontend: HTML + vanilla JavaScript (sem framework) + Tailwind CSS (CDN)
+- Frontend: HTML + vanilla JavaScript (sem framework) + Tailwind CSS (compilado em `web/tailwind.css` via `tailwind.config.js`)
 - Banco de dados: Google Cloud Firestore
 - Infraestrutura: Google Cloud Run (serverless, stateless)
 - Deploy: Push para `main` no GitHub → CI/CD automático para Cloud Run

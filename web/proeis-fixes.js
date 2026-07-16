@@ -63,13 +63,11 @@
     const logo = document.querySelector('#sidebar .w-9.h-9');
     if (logo) {
       logo.classList.add('proeis-logo');
-      logo.innerHTML = '<svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true"><path d="M16 46V16h15c7 0 12 4 12 10s-5 10-12 10h-7v10h-8Zm8-17h7c3 0 5-1 5-3s-2-3-5-3h-7v6Z" fill="#08111f"/><path d="M43 18h6v28h-6z" fill="#fff"/><circle cx="49" cy="13" r="4" fill="#facc15"/></svg>';
     }
     const title = document.querySelector('#sidebar h1');
     if (title) title.textContent = 'PROEIS Bot';
     const subtitle = document.querySelector('#sidebar p');
     if (subtitle) subtitle.textContent = 'Automa\u00e7\u00e3o RJ';
-    Object.entries(LABELS).forEach(([id, label]) => setNavLabel(id, label));
   }
 
   function fixMainText() {
@@ -161,7 +159,7 @@
     btn.onclick = () => window.navigate('logs');
     btn.id = 'nav-logs';
     btn.className = 'nav-item w-full';
-    btn.innerHTML = '<span>Logs</span>';
+    btn.innerHTML = '<span class="nav-icon">🧾</span><span class="nav-label">Logs</span>';
     settings.parentNode.insertBefore(btn, settings);
   }
 

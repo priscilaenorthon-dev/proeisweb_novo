@@ -1585,7 +1585,7 @@ async def captcha_bench(request: Request):
 def _asset_version() -> str:
     import hashlib
     h = hashlib.md5()
-    for name in ("index.html", "app.js", "styles.css", "proeis-fixes.js", "favicon.svg"):
+    for name in ("index.html", "app.js", "styles.css", "tailwind.css", "proeis-fixes.js", "favicon.svg", "manifest.webmanifest"):
         try:
             h.update((ROOT / "web" / name).read_bytes())
         except OSError:
