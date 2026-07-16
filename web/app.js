@@ -1062,27 +1062,60 @@ async function startRun(horario = '') {
   let batchTotal = selected.length;
   let batchPerf = null;
 
-  try {
-    for await (const msg of api.stream('/api/run-batch-fast', batchBody, state.abortController.signal)) {
-      if (!state.running) break;
-      if (msg.type === 'log') {
-        appendLog(msg.line, logClass(msg.line));
-      } else if (msg.type === 'done') {
-        batchStatus = msg.status;
-        batchMessage = msg.message || '';
-        batchConfirmed = msg.confirmed || 0;
-        batchTotal = msg.total || selected.length;
-        batchPerf = msg.perf || null;
-        if (msg.op_id) appendLog(`[LOG] ID da operacao: ${msg.op_id} - /api/logs/${msg.op_id}`, 'text-gray-500');
-      }
+  // O batch continua rodando no servidor mesmo se a conexao cair (ex.: timeout
+  // do Cloud Run aos 5 min). Em vez de mostrar erro — o que induz a iniciar um
+  // batch duplicado — reconecta ao mesmo batch via resume_op_id/resume_from.
+  let batchOpId = '';
+  let lastMsgIndex = -1;
+  let gotDone = false;
+  let reconnects = 0;
+  const MAX_RECONNECTS = 100;
+
+  while (state.running && !gotDone) {
+    const body = { ...batchBody };
+    if (batchOpId) {
+      body.resume_op_id = batchOpId;
+      body.resume_from = lastMsgIndex + 1;
     }
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      appendLog('[PARADO] Cancelado.', 'text-orange-400');
-      batchMessage = 'Cancelado';
-    } else {
-      batchMessage = err.message;
-      appendLog(`[ERRO] ${err.message}`, 'text-red-400');
+    try {
+      for await (const msg of api.stream('/api/run-batch-fast', body, state.abortController.signal)) {
+        if (!state.running) break;
+        if (msg.type === 'start') {
+          batchOpId = msg.op_id || batchOpId;
+          if (msg.attached && reconnects === 0) {
+            appendLog('[AVISO] Ja havia um batch em andamento no servidor; acompanhando ele (nenhum batch novo foi iniciado).', 'text-yellow-300');
+          }
+        } else if (msg.type === 'log') {
+          if (typeof msg.i === 'number') lastMsgIndex = msg.i;
+          appendLog(msg.line, logClass(msg.line));
+        } else if (msg.type === 'done') {
+          gotDone = true;
+          batchStatus = msg.status;
+          batchMessage = msg.message || '';
+          batchConfirmed = msg.confirmed || 0;
+          batchTotal = msg.total || selected.length;
+          batchPerf = msg.perf || null;
+          if (msg.op_id) appendLog(`[LOG] ID da operacao: ${msg.op_id} - /api/logs/${msg.op_id}`, 'text-gray-500');
+        }
+      }
+      if (!gotDone && state.running) {
+        throw new Error('conexao com o servidor foi interrompida');
+      }
+    } catch (err) {
+      if (err.name === 'AbortError' || !state.running) {
+        appendLog('[PARADO] Cancelado.', 'text-orange-400');
+        batchMessage = 'Cancelado';
+        break;
+      }
+      reconnects += 1;
+      if (reconnects > MAX_RECONNECTS) {
+        batchMessage = err.message;
+        appendLog(`[ERRO] ${err.message}`, 'text-red-400');
+        break;
+      }
+      const waitS = Math.min(5, reconnects);
+      appendLog(`[AVISO] Conexao caiu (${err.message}). Reconectando ao batch em ${waitS}s (tentativa ${reconnects})... O batch continua rodando no servidor.`, 'text-yellow-300');
+      await new Promise((resolve) => setTimeout(resolve, waitS * 1000));
     }
   }
 

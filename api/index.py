@@ -5,7 +5,7 @@ import base64
 import json
 import os
 import re
-import secrets
+
 import sys
 import threading
 import time
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException, FastAPI, Request
+from fastapi import HTTPException, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -48,7 +48,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class RunRequest(BaseModel):
     # Credenciais
     login: str = ""
@@ -79,11 +78,6 @@ class RunRequest(BaseModel):
     auto_retry_rounds: int = 0
     auto_retry_wait_seconds: int = 0
 
-
-class SchedulerRunRequest(BaseModel):
-    events: list[RunRequest] = []
-
-
 class BatchRunRequest(BaseModel):
     events: list[RunRequest] = []
     horario: str = ""
@@ -93,6 +87,11 @@ class BatchRunRequest(BaseModel):
     batch_max_no_action_rounds: int = 2
     recovery_window_seconds: int = 0
     scan_rounds: int = 1
+    # Reconexao: quando o stream cai (ex.: timeout do Cloud Run), o painel
+    # reenvia a requisicao com o op_id do batch e o indice da ultima linha
+    # recebida para reatachar sem iniciar um batch duplicado.
+    resume_op_id: str = ""
+    resume_from: int = 0
 
     # Credenciais/configuracoes compartilhadas do lote.
     login: str = ""
@@ -110,10 +109,8 @@ class BatchRunRequest(BaseModel):
     auto_retry_rounds: int = 0
     auto_retry_wait_seconds: int = 0
 
-
 class EventListResponse(BaseModel):
     events: list[dict[str, Any]]
-
 
 class ListVagasRequest(BaseModel):
     login: str = ""
@@ -132,12 +129,10 @@ class ListVagasRequest(BaseModel):
     captcha_refresh_after_invalids: int = 0
     gemini_timeout: int = 0
 
-
 class ServicosRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
-
 
 def _parse_servicos(raw: str) -> list[dict]:
     """Parseia o conteudo do textarea txtEveVoluntario em registros estruturados."""
@@ -173,7 +168,6 @@ def _parse_servicos(raw: str) -> list[dict]:
             servicos.append(rec)
     return servicos
 
-
 def _apply_runtime_options(body: RunRequest) -> None:
     if getattr(body, "http_attempts", 0) > 0:
         os.environ["PROEIS_HTTP_ATTEMPTS"] = str(body.http_attempts)
@@ -196,7 +190,6 @@ def _apply_runtime_options(body: RunRequest) -> None:
     if getattr(body, "gemini_model", ""):
         os.environ["GEMINI_MODEL"] = body.gemini_model
 
-
 _TEXT_FIELDS = (
     "convenio",
     "data_evento",
@@ -209,7 +202,6 @@ _TEXT_FIELDS = (
     "endereco",
 )
 
-
 def _clean_text(value: Any) -> str:
     text = reparar_mojibake(value).strip()
     if any(0x80 <= ord(char) <= 0x9F for char in text):
@@ -219,65 +211,10 @@ def _clean_text(value: Any) -> str:
             pass
     return reparar_mojibake(text).strip()
 
-
 def _clean_request_text(body: BaseModel) -> None:
     for field in _TEXT_FIELDS:
         if hasattr(body, field):
             setattr(body, field, _clean_text(getattr(body, field, "")))
-
-
-def _run_event_once(body: RunRequest) -> dict[str, Any]:
-    _clean_request_text(body)
-    login_val = body.login or os.getenv("PROEIS_LOGIN", "")
-    password_val = body.password or os.getenv("PROEIS_PASSWORD", "")
-    gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-    twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
-
-    if not login_val:
-        raise AutomationError("Login nao configurado.")
-    if not password_val:
-        raise AutomationError("Senha nao configurada.")
-    if not gemini_key:
-        raise AutomationError("GEMINI_API_KEY nao configurada.")
-    if not body.convenio:
-        raise AutomationError("Convenio nao informado.")
-    if not body.cpa:
-        raise AutomationError("CPA nao informado.")
-
-    _apply_runtime_options(body)
-
-    client = ProeisHTTP(
-        login=login_val,
-        password=password_val,
-        twocaptcha_key=twocaptcha,
-        gemini_api_key=gemini_key,
-    )
-    _warmup_event.wait(timeout=30)
-    if not _try_restore_session(client):
-        login_with_retries(client, "Login via agendamento Cloud Scheduler")
-        _fetch_user_name_and_save(client)
-    confirmed = client.mark_scanning_dates(
-        body.convenio,
-        body.cpa,
-        body.disponivel,
-        body.quantidade,
-        scan_rounds=body.scan_rounds,
-        start_date=body.data_evento,
-        nome_evento=body.nome_evento,
-        hora_evento=body.hora_evento,
-        turno=body.turno,
-        endereco=body.endereco,
-    )
-    _resave_current_session(client)
-    return {
-        "status": "confirmado" if confirmed >= body.quantidade else "pendente",
-        "confirmed": confirmed,
-        "convenio": body.convenio,
-        "cpa": body.cpa,
-        "data_evento": body.data_evento,
-        "hora_evento": body.hora_evento,
-    }
-
 
 _env_lock = threading.Lock()
 _warmup_lock = threading.Lock()
@@ -290,7 +227,6 @@ _LOGS_LIMIT = 200
 
 # Thread-local storage para captura por thread (evita mistura de logs em requisicoes concorrentes)
 _thread_local = threading.local()
-
 
 class _RoutingCapture:
     """Thread-safe: encaminha writes para o _Capture do thread atual."""
@@ -325,16 +261,13 @@ class _RoutingCapture:
         except Exception:
             return -1
 
-
 # Instala o roteador uma vez; cada thread registra seu proprio _Capture via _thread_local.capture
 _routing_stdout = _RoutingCapture()
 sys.stdout = _routing_stdout
 sys.stderr = _routing_stdout
 
-
 def _sse_data(item: dict[str, Any]) -> str:
     return f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-
 
 class _Capture:
     """Redireciona stdout/stderr para a fila SSE e para arquivo de log da operacao."""
@@ -378,24 +311,6 @@ class _Capture:
         except Exception:
             return -1
 
-
-def _scheduled_events_from_env() -> list[RunRequest]:
-    raw = os.getenv("SCHEDULED_EVENTS_JSON", "").strip()
-    if not raw:
-        return []
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise AutomationError(f"SCHEDULED_EVENTS_JSON invalido: {exc}") from exc
-    if isinstance(data, dict) and "events" in data:
-        data = data["events"]
-    elif isinstance(data, dict):
-        data = [data]
-    if not isinstance(data, list):
-        raise AutomationError("SCHEDULED_EVENTS_JSON deve ser um objeto, lista ou {'events': [...]}.")
-    return [RunRequest(**item) for item in data]
-
-
 def _firestore_db():
     try:
         from google.cloud import firestore
@@ -404,20 +319,16 @@ def _firestore_db():
     database = os.getenv("FIRESTORE_DATABASE", "proeis")
     return firestore.Client(database=database)
 
-
 def _events_collection():
     return _firestore_db().collection(os.getenv("FIRESTORE_EVENTS_COLLECTION", "events"))
 
-
 def _logs_collection():
     return _firestore_db().collection(os.getenv("FIRESTORE_LOGS_COLLECTION", "operation_logs"))
-
 
 def _session_collection():
     return _firestore_db().collection(
         os.getenv("FIRESTORE_SESSION_COLLECTION", "proeis_session")
     )
-
 
 def _save_session(client: ProeisHTTP, user_name: str) -> None:
     """Salva cookies e nome do usuario no Firestore para reutilizacao na proxima operacao."""
@@ -442,7 +353,6 @@ def _save_session(client: ProeisHTTP, user_name: str) -> None:
         print(f"[SESSION] Sessao salva (usuario: {user_name or client.login}).")
     except Exception as exc:
         print(f"[SESSION] Aviso: nao foi possivel salvar sessao: {exc}")
-
 
 def _load_session(client: ProeisHTTP) -> dict:
     """Carrega cookies do Firestore para client.session. Retorna {valid, user_name}."""
@@ -472,7 +382,6 @@ def _load_session(client: ProeisHTTP) -> dict:
         print(f"[SESSION] Erro ao carregar sessao: {exc}")
         return {"valid": False, "user_name": ""}
 
-
 def _try_restore_session(client: ProeisHTTP) -> bool:
     """Carrega cookies e verifica se sessao ainda e valida. True = login nao necessario."""
     result = _load_session(client)
@@ -489,7 +398,6 @@ def _try_restore_session(client: ProeisHTTP) -> bool:
     except Exception as exc:
         print(f"[SESSION] Erro ao validar sessao restaurada: {exc}")
         return False
-
 
 def _fetch_user_name_and_save(client: ProeisHTTP) -> None:
     """Apos login novo: busca nome do usuario no menu e persiste sessao no Firestore."""
@@ -515,7 +423,6 @@ def _fetch_user_name_and_save(client: ProeisHTTP) -> None:
     except Exception as exc:
         print(f"[SESSION] Aviso: nao salvou sessao apos login: {exc}")
 
-
 def _resave_current_session(client: ProeisHTTP) -> None:
     try:
         doc = _session_collection().document("current").get()
@@ -524,7 +431,6 @@ def _resave_current_session(client: ProeisHTTP) -> None:
     except Exception as exc:
         print(f"[SESSION] Aviso: nao foi possivel atualizar sessao atual: {exc}")
 
-
 def _event_payload(body: RunRequest) -> dict[str, Any]:
     _clean_request_text(body)
     data = body.model_dump()
@@ -532,7 +438,6 @@ def _event_payload(body: RunRequest) -> dict[str, Any]:
     data["scan_rounds"] = int(data.get("scan_rounds") or 1)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     return data
-
 
 def _batch_event_payload(event: RunRequest) -> dict[str, Any]:
     _clean_request_text(event)
@@ -543,21 +448,14 @@ def _batch_event_payload(event: RunRequest) -> dict[str, Any]:
         data[key] = _clean_text(data.get(key, ""))
     return data
 
-
 def _doc_to_event(doc) -> dict[str, Any]:
     data = doc.to_dict() or {}
     data["id"] = doc.id
     return data
 
-
 def _stored_events() -> list[dict[str, Any]]:
     query = _events_collection().order_by("created_at")
     return [_doc_to_event(doc) for doc in query.stream()]
-
-
-def _scheduled_events_from_firestore() -> list[RunRequest]:
-    return [RunRequest(**{k: v for k, v in item.items() if k != "id"}) for item in _stored_events()]
-
 
 def _save_operation_log(
     op_id: str,
@@ -583,7 +481,6 @@ def _save_operation_log(
     except Exception:
         pass
 
-
 def _firestore_logs() -> list[dict[str, Any]]:
     try:
         logs = []
@@ -595,19 +492,16 @@ def _firestore_logs() -> list[dict[str, Any]]:
     except Exception:
         return []
 
-
 class TestLoginRequest(BaseModel):
     login: str = ""
     password: str = ""
     gemini_api_key: str = ""
     twocaptcha_key: str = ""
 
-
 @app.get("/api/health")
 def health():
     load_env_file()
     checks: dict[str, Any] = {"version": "1.0"}
-    checks["scheduler_secret"] = bool(os.getenv("SCHEDULER_SECRET", ""))
     try:
         _events_collection().limit(1).get()
         checks["firestore"] = "ok"
@@ -615,58 +509,6 @@ def health():
         checks["firestore"] = f"erro: {exc}"
     all_ok = checks["firestore"] == "ok"
     return {"status": "ok" if all_ok else "degraded", **checks}
-
-
-@app.post("/api/scheduler/run")
-def scheduler_run(
-    body: SchedulerRunRequest | None = None,
-    x_scheduler_secret: str = Header(default=""),
-):
-    load_env_file()
-    expected_secret = os.getenv("SCHEDULER_SECRET", "")
-    if not expected_secret:
-        raise HTTPException(status_code=500, detail="SCHEDULER_SECRET nao configurado.")
-    if not secrets.compare_digest(x_scheduler_secret, expected_secret):
-        raise HTTPException(status_code=401, detail="Scheduler nao autorizado.")
-
-    try:
-        events = body.events if body and body.events else _scheduled_events_from_firestore()
-        if not events:
-            events = _scheduled_events_from_env()
-        if not events:
-            raise AutomationError("Nenhum evento informado para o agendamento.")
-
-        results = []
-        for index, event in enumerate(events, start=1):
-            try:
-                result = _run_event_once(event)
-                results.append({"index": index, **result})
-            except Exception as exc:
-                results.append({
-                    "index": index,
-                    "status": "erro",
-                    "message": f"{type(exc).__name__}: {exc}",
-                    "convenio": event.convenio,
-                    "cpa": event.cpa,
-                    "data_evento": event.data_evento,
-                    "hora_evento": event.hora_evento,
-                })
-        ok = any(item.get("status") == "confirmado" for item in results)
-
-        op_id = str(uuid.uuid4())
-        _save_operation_log(
-            op_id=op_id,
-            kind="agendamento",
-            status="ok" if ok else "erro",
-            lines=[json.dumps(r, ensure_ascii=False) for r in results],
-            log_name=f"Scheduler — {len(events)} evento(s)",
-            result={"ok": ok, "total": len(results)},
-        )
-
-        return {"ok": ok, "total": len(results), "results": results}
-    except AutomationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
 
 @app.post("/api/test-login")
 async def test_login(body: TestLoginRequest):
@@ -727,7 +569,6 @@ async def test_login(body: TestLoginRequest):
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
 
-
 @app.post("/api/servicos-marcados")
 def get_servicos_marcados(body: ServicosRequest):
     load_env_file()
@@ -772,7 +613,6 @@ def get_servicos_marcados(body: ServicosRequest):
     except Exception as exc:
         return {"ok": False, "message": str(exc), "servicos": [], "nome": ""}
 
-
 @app.get("/api/env-defaults")
 def get_env_defaults():
     load_env_file()
@@ -805,13 +645,11 @@ def get_env_defaults():
         },
     }
 
-
 @app.get("/api/options")
 def get_options():
     options_path = ROOT / "config" / "proeis_options.json"
     data = json.loads(options_path.read_text(encoding="utf-8"))
     return data
-
 
 @app.get("/api/events", response_model=EventListResponse)
 def list_events():
@@ -820,7 +658,6 @@ def list_events():
         return {"events": _stored_events()}
     except AutomationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
 
 @app.post("/api/events")
 def create_event(body: RunRequest):
@@ -835,7 +672,6 @@ def create_event(body: RunRequest):
         return {"ok": True, "event": {"id": ref.id, **data}}
     except AutomationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
 
 @app.put("/api/events/{event_id}")
 def update_event(event_id: str, body: RunRequest):
@@ -852,7 +688,6 @@ def update_event(event_id: str, body: RunRequest):
     except AutomationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
-
 @app.delete("/api/events/{event_id}")
 def delete_event(event_id: str):
     load_env_file()
@@ -861,7 +696,6 @@ def delete_event(event_id: str):
         return {"ok": True}
     except AutomationError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
 
 @app.post("/api/run")
 async def run_automation(body: RunRequest):
@@ -988,6 +822,75 @@ async def run_automation(body: RunRequest):
         },
     )
 
+# ── Batch unico com reconexao ───────────────────────────────────────────────
+# Apenas um batch rapido roda por vez nesta instancia. Se o stream do painel
+# cair (ex.: timeout de requisicao do Cloud Run), o painel reenvia a chamada e
+# reataca ao batch em andamento em vez de iniciar um processo duplicado —
+# batches simultaneos na mesma conta do PROEIS derrubam a sessao um do outro.
+_batch_guard = threading.Lock()
+_current_batch: dict[str, Any] = {"run": None}
+
+class _BatchRun:
+    def __init__(self, op_id: str, total: int) -> None:
+        self.op_id = op_id
+        self.lock = threading.Lock()
+        self.messages: list[dict[str, Any]] = []
+        self.done = threading.Event()
+        self.result: dict[str, Any] = {
+            "status": "pendente",
+            "message": "",
+            "op_id": op_id,
+            "confirmed": 0,
+            "total": total,
+        }
+        self.perf: dict[str, int] = {}
+
+    def emit(self, msg: Optional[dict]) -> None:
+        if msg is None:
+            self.done.set()
+            return
+        with self.lock:
+            msg["i"] = len(self.messages)
+            self.messages.append(msg)
+
+async def _stream_batch(run: _BatchRun, start_index: int, attached: bool):
+    yield _SSE_PADDING
+    yield _sse_data({
+        "type": "start",
+        "op_id": run.op_id,
+        "attached": attached,
+        "total": run.result.get("total", 0),
+    })
+    idx = start_index
+    idle = 0.0
+    while True:
+        with run.lock:
+            new = run.messages[idx:]
+        if new:
+            idx += len(new)
+            idle = 0.0
+            for msg in new:
+                yield _sse_data(msg)
+            continue
+        if run.done.is_set():
+            break
+        await asyncio.sleep(0.5)
+        idle += 0.5
+        if idle >= 15:
+            idle = 0.0
+            yield ": keep-alive\n\n"
+    yield _sse_data({"type": "done", **run.result, "perf": run.perf})
+
+def _sse_response(gen) -> StreamingResponse:
+    return StreamingResponse(
+        gen,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 @app.post("/api/run-batch-fast")
 async def run_batch_fast(body: BatchRunRequest):
@@ -998,21 +901,51 @@ async def run_batch_fast(body: BatchRunRequest):
     gemini_key = body.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
     twocaptcha = body.twocaptcha_key or os.getenv("TWOCAPTCHA_API_KEY", "")
 
-    op_id = uuid.uuid4().hex[:8]
-    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result: dict[str, Any] = {
-        "status": "pendente",
-        "message": "",
-        "op_id": op_id,
-        "confirmed": 0,
-        "total": len(body.events),
-    }
-    perf: dict[str, int] = {}
-    loop = asyncio.get_event_loop()
-    aqueue: asyncio.Queue = asyncio.Queue()
+    with _batch_guard:
+        active = _current_batch.get("run")
+        if active is not None and not active.done.is_set():
+            # Ja existe batch rodando: reataca a ele em vez de iniciar outro.
+            if body.resume_op_id == active.op_id:
+                start_index = max(0, min(body.resume_from, len(active.messages)))
+            else:
+                start_index = 0
+                active.emit({
+                    "type": "log",
+                    "line": f"[AVISO] Batch {active.op_id} ja em andamento; reconectando ao processo existente em vez de iniciar outro.",
+                })
+            return _sse_response(_stream_batch(active, start_index, attached=True))
+        if body.resume_op_id:
+            # Reconexao tardia: nunca inicia um batch novo a partir de um resume.
+            if active is not None and active.op_id == body.resume_op_id:
+                # Batch terminou enquanto o painel estava desconectado; entrega o final.
+                start_index = max(0, min(body.resume_from, len(active.messages)))
+                return _sse_response(_stream_batch(active, start_index, attached=True))
 
-    def emit(msg: Optional[dict]) -> None:
-        loop.call_soon_threadsafe(aqueue.put_nowait, msg)
+            async def _gone():
+                yield _SSE_PADDING
+                yield _sse_data({
+                    "type": "log",
+                    "line": f"[AVISO] Batch {body.resume_op_id} nao encontrado (a instancia pode ter reiniciado). Nenhum batch novo foi iniciado; confira o historico de logs.",
+                })
+                yield _sse_data({
+                    "type": "done",
+                    "status": "pendente",
+                    "message": "Conexao com o batch original foi perdida. Confira o historico de logs.",
+                    "op_id": body.resume_op_id,
+                    "confirmed": 0,
+                    "total": 0,
+                    "perf": {},
+                })
+            return _sse_response(_gone())
+
+        op_id = uuid.uuid4().hex[:8]
+        run = _BatchRun(op_id, len(body.events))
+        _current_batch["run"] = run
+
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result = run.result
+    perf = run.perf
+    emit = run.emit
 
     def _run() -> None:
         _LOGS_DIR.mkdir(exist_ok=True)
@@ -1112,10 +1045,19 @@ async def run_batch_fast(body: BatchRunRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
-            perf["total_ms"] = int((time.monotonic() - t_total) * 1000)
-            print(f"[PERF] total_ms={perf['total_ms']}")
-            print(f"[OP] Batch rapido encerrado: status={result['status']} | log={log_path.name}")
-            _save_operation_log(op_id, "run_batch_fast", result["status"], log_lines, log_path.name, result)
+            # Cada passo do encerramento e isolado: se um falhar, os demais rodam
+            # e o emit(None) SEMPRE acontece — sem ele o batch nunca e marcado
+            # como terminado e a trava de batch unico ficaria presa para sempre.
+            try:
+                perf["total_ms"] = int((time.monotonic() - t_total) * 1000)
+                print(f"[PERF] total_ms={perf['total_ms']}")
+                print(f"[OP] Batch rapido encerrado: status={result['status']} | log={log_path.name}")
+            except BaseException:
+                pass
+            try:
+                _save_operation_log(op_id, "run_batch_fast", result["status"], log_lines, log_path.name, result)
+            except BaseException:
+                pass
             _thread_local.capture = None
             try:
                 log_file.close()
@@ -1123,39 +1065,14 @@ async def run_batch_fast(body: BatchRunRequest):
                 pass
             emit(None)
 
-    async def _stream():
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
-        yield _SSE_PADDING
-        elapsed_idle = 0
+    def _run_safe() -> None:
         try:
-            while True:
-                try:
-                    item = await asyncio.wait_for(aqueue.get(), timeout=3.0)
-                    elapsed_idle = 0
-                    if item is None:
-                        break
-                    yield _sse_data(item)
-                except asyncio.TimeoutError:
-                    elapsed_idle += 3
-                    if elapsed_idle >= 120 and not body.horario:
-                        aviso = "[AVISO] Operacao excedeu 2 min sem resposta. Verifique conexao ou timeouts."
-                        yield _sse_data({"type": "log", "line": aviso})
-                        break
-                    yield ": keep-alive\n\n"
+            _run()
         finally:
-            yield _sse_data({"type": "done", **result, "perf": perf})
+            run.emit(None)  # garantia extra; done.set() e idempotente
 
-    return StreamingResponse(
-        _stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
-
+    threading.Thread(target=_run_safe, daemon=True).start()
+    return _sse_response(_stream_batch(run, 0, attached=False))
 
 @app.post("/api/list-vagas")
 async def list_vagas(body: ListVagasRequest):
@@ -1286,7 +1203,6 @@ async def list_vagas(body: ListVagasRequest):
         },
     )
 
-
 @app.get("/api/logs")
 def list_logs(kind: str = ""):
     """Lista as operacoes mais recentes. Filtro opcional: ?kind=agendamento|run|listar"""
@@ -1323,7 +1239,6 @@ def list_logs(kind: str = ""):
         ]
     }
 
-
 @app.get("/api/log-content/{op_id}")
 def get_persisted_log(op_id: str):
     if not re.match(r"^[a-f0-9]{8}$", op_id):
@@ -1349,7 +1264,6 @@ def get_persisted_log(op_id: str):
             return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
     raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
 
-
 @app.get("/api/logs/{op_id}")
 def get_log(op_id: str):
     """Retorna o conteudo do arquivo de log de uma operacao."""
@@ -1362,7 +1276,6 @@ def get_log(op_id: str):
         raise HTTPException(status_code=404, detail=f"Log '{op_id}' nao encontrado.")
     log_file = sorted(matches, key=lambda f: f.stat().st_mtime, reverse=True)[0]
     return {"op_id": op_id, "name": log_file.name, "content": log_file.read_text(encoding="utf-8")}
-
 
 def _trigger_warmup_login() -> None:
     """Dispara login em background se nao houver sessao valida e credenciais estiverem configuradas.
@@ -1399,7 +1312,6 @@ def _trigger_warmup_login() -> None:
             _warmup_event.set()  # sinaliza "login concluido (ou falhou)"
 
     threading.Thread(target=_do_warmup, daemon=True).start()
-
 
 @app.get("/api/session-status")
 def session_status():
@@ -1441,7 +1353,6 @@ def session_status():
     except Exception:
         return {"logged_in": False, "user_name": "", "saved_at": ""}
 
-
 @app.post("/api/session-logout")
 def session_logout():
     """Apaga a sessao persistida do Firestore, forcando novo login na proxima operacao."""
@@ -1451,55 +1362,6 @@ def session_logout():
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
-
-
-@app.post("/api/session-keepalive")
-def session_keepalive(x_scheduler_secret: str = Header(default="")):
-    """Mantém a sessao PROEIS ativa. Chamar via Cloud Scheduler a cada 10 min.
-    Se a sessao ainda for valida, renova saved_at. Se expirou, faz login completo.
-    """
-    load_env_file()
-    expected_secret = os.getenv("SCHEDULER_SECRET", "")
-    if expected_secret and not secrets.compare_digest(x_scheduler_secret, expected_secret):
-        raise HTTPException(status_code=401, detail="Nao autorizado.")
-
-    login_val = os.getenv("PROEIS_LOGIN", "")
-    password_val = os.getenv("PROEIS_PASSWORD", "")
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-
-    if not login_val or not password_val or not gemini_key:
-        return {"ok": False, "status": "sem_credenciais"}
-
-    client = ProeisHTTP(
-        login=login_val,
-        password=password_val,
-        twocaptcha_key=os.getenv("TWOCAPTCHA_API_KEY", ""),
-        gemini_api_key=gemini_key,
-    )
-
-    # Aguarda warmup em andamento antes de tentar restaurar; evita corrida de logins
-    _warmup_event.wait(timeout=30)
-
-    if _try_restore_session(client):
-        doc = _session_collection().document("current").get()
-        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
-        _session_collection().document("current").update({
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-        })
-        print(f"[KEEPALIVE] Sessao ativa para '{user_name}'. saved_at atualizado.")
-        return {"ok": True, "status": "ativa", "user_name": user_name}
-
-    try:
-        login_with_retries(client, "Keepalive automatico")
-        _fetch_user_name_and_save(client)
-        doc = _session_collection().document("current").get()
-        user_name = (doc.to_dict() or {}).get("user_name", login_val) if doc.exists else login_val
-        print(f"[KEEPALIVE] Sessao renovada para '{user_name}'.")
-        return {"ok": True, "status": "renovada", "user_name": user_name}
-    except Exception as exc:
-        print(f"[KEEPALIVE] Erro ao renovar sessao: {exc}")
-        return {"ok": False, "status": "erro", "message": str(exc)}
-
 
 @app.post("/api/session-keepalive-web")
 def session_keepalive_web(body: TestLoginRequest):
@@ -1540,7 +1402,6 @@ def session_keepalive_web(body: TestLoginRequest):
     except Exception as exc:
         print(f"[KEEPALIVE] Erro no keepalive web: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
-
 
 from starlette.staticfiles import StaticFiles
 
@@ -1748,7 +1609,6 @@ async def captcha_bench(request: Request):
             yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")
 

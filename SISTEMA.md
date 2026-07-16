@@ -22,9 +22,7 @@ proeisweb_novo/
 │   └── proeis_options.json # Lista de convênios e CPAs disponíveis
 ├── deploy/
 │   ├── README.md                        # Ordem de execução e pré-requisitos
-│   ├── 01-set-min-instances.sh          # Elimina cold start (min-instances=1)
-│   ├── 02-set-scheduler-secret.sh       # Configura SCHEDULER_SECRET no Cloud Run
-│   └── 03-setup-keepalive-scheduler.sh  # Cria job keepalive (a cada 10 min)
+│   └── 01-set-min-instances.sh          # Elimina cold start (min-instances=1)
 ├── logs/                   # Logs de operações (fallback local quando Firestore indisponível)
 ├── requirements.txt        # Dependências Python
 └── .env                    # Variáveis de ambiente (não versionado)
@@ -257,7 +255,7 @@ Servidor FastAPI. Montagem de arquivos estáticos da pasta `web/` na raiz `/`.
 
 ```
 GET /api/health
-→ {status, version, scheduler_secret: bool, firestore: bool}
+→ {status, version, firestore: bool}
 ```
 
 #### Sessão persistente
@@ -324,21 +322,10 @@ body: {login, password, gemini_api_key}
                                      ponto_encontro, endereco, complemento}]}
 ```
 
-#### Agendamento automático (Cloud Scheduler)
-
-```
-POST /api/scheduler/run
-header: x-scheduler-secret: <SCHEDULER_SECRET>
-body: SchedulerRunRequest (opcional — usa eventos do Firestore por padrão)
-→ {ok: bool, total: int, results: [{index, status, confirmed, convenio, cpa, ...}]}
-```
-
-**Proteção:** o endpoint valida o header `x-scheduler-secret` contra `SCHEDULER_SECRET` do ambiente. Retorna 401 se inválido.
-
 #### Logs de operações
 
 ```
-GET /api/logs?kind=agendamento|run|listar
+GET /api/logs?kind=run|listar
 → {logs: [{name, op_id, kind, status, size_kb, created_at, line_count}]}
 
 GET /api/log-content/{op_id}
@@ -472,7 +459,6 @@ GEMINI_API_KEY=AIzaSy...
 ```env
 TWOCAPTCHA_API_KEY=          # Solver alternativo de captcha
 GEMINI_MODEL=gemini-2.5-flash       # Padrão atual
-SCHEDULER_SECRET=secret123   # Obrigatório para /api/scheduler/run e keepalive
 CORS_ORIGINS=*
 ```
 
@@ -596,36 +582,24 @@ O PROEIS exige captcha em **cada submissão de filtro** (uma por data pesquisada
 
 ---
 
-## Agendamento Automático (Cloud Scheduler)
+## Execução em Lote (Batch Rápido)
 
-Dois jobs independentes no Cloud Scheduler; ambos autenticados via `SCHEDULER_SECRET`.
+A marcação é feita exclusivamente pelo painel web (`POST /api/run-batch-fast`).
+O agendamento automático via Cloud Scheduler foi removido do sistema.
 
-### Job 1 — Marcação de vagas (`/api/scheduler/run`)
+### Batch único com reconexão
 
-Dispara diariamente no horário configurado (ex: 07:00 Brasília).
+Apenas **um** batch rápido roda por vez em cada instância:
 
-**Fluxo:**
-1. Cloud Scheduler → `POST /api/scheduler/run` com `x-scheduler-secret`
-2. Busca eventos ativos no Firestore
-3. Para cada evento: `_try_restore_session()` → se inválida: login completo
-4. Marca vaga → salva resultado no Firestore com `kind=agendamento`
-
-**Importante:** Para 4 eventos em sequência, o 1º pode fazer login e os 3+ seguintes reutilizam a sessão salva. Os cookies são armazenados no Firestore entre eventos mesmo sendo em instâncias separadas.
-
-### Job 2 — Keepalive de sessão (`/api/session-keepalive`)
-
-Dispara a cada **10 minutos** para manter a sessão do PROEIS sempre viva no Firestore.
-
-**Por quê:** O servidor ASP.NET do PROEIS expira sessões após ~20 minutos de inatividade. Sem o keepalive, quase toda marcação manual paga o custo de login completo (~1,7s + captcha).
-
-**Fluxo:**
-1. Cloud Scheduler → `POST /api/session-keepalive` com `X-Scheduler-Secret`
-2. Carrega sessão do Firestore e valida com `check_auth()`
-3. Se sessão ainda válida: atualiza `saved_at` (renova TTL interno)
-4. Se sessão expirou: login completo → salva nova sessão
-5. Retorna `{"ok": true, "status": "ativa"|"renovada"}`
-
-**Configuração:** veja `deploy/03-setup-keepalive-scheduler.sh`. Scripts completos em `deploy/README.md`.
+- Se o painel chamar `/api/run-batch-fast` enquanto um batch já roda, o servidor
+  **reataca** o painel ao batch em andamento em vez de iniciar outro — batches
+  simultâneos na mesma conta do PROEIS derrubam a sessão um do outro.
+- Se a conexão do painel cair (ex.: timeout de requisição do Cloud Run), o batch
+  **continua rodando no servidor** e o painel reconecta sozinho enviando
+  `resume_op_id` + `resume_from` (índice da última linha de log recebida),
+  retomando o stream do ponto onde parou.
+- O keepalive de sessão é feito pelo próprio painel (`/api/session-keepalive-web`)
+  enquanto ele estiver aberto.
 
 ---
 
@@ -655,7 +629,7 @@ Dispara a cada **10 minutos** para manter a sessão do PROEIS sempre viva no Fir
 
 ### 5. Limite de logs
 - `_LOGS_LIMIT = 200` — máximo de logs retornados por `/api/logs`
-- Filtro: `?kind=agendamento`, `?kind=run`, `?kind=listar`
+- Filtro: `?kind=run`, `?kind=listar`
 
 ### 6. Limpeza de texto (mojibake)
 - O PROEIS retorna texto às vezes com encoding corrompido
