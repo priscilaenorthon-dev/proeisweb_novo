@@ -505,7 +505,6 @@ Arquivo único `web/app.js`. Sem framework, sem build step.
 | `servicos` | `renderServicosPage()` | Serviços marcados no PROEIS. **Cacheia resultado em localStorage** (8h). Na segunda visita mostra instantaneamente sem nova requisição. Botão Atualizar força recarregamento. |
 | `listar` | `renderListarPage()` | Lista vagas disponíveis com log em tempo real. Em mobile: abas "Log" / "Vagas listadas". |
 | `run` | `renderRunPage()` | Execução manual de automação. |
-| `schedule` | `renderSchedulePage()` | Agenda execução automática diária (Cloud Scheduler). |
 | `settings` | `renderSettingsPage()` | Credenciais em localStorage + configurações avançadas. |
 | `help` | `renderHelpPage()` | Guia de uso. |
 

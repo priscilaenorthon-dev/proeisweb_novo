@@ -8,9 +8,6 @@ const state = {
   options: null,
   events: null,
   envDefaults: null,
-  scheduleTimer: null,
-  scheduledAt: null,
-  scheduledTime: '',
   running: false,
   abortController: null,
 };
@@ -612,9 +609,6 @@ async function renderRunPage() {
           </div>
           <button id="run-btn" onclick="startRun()" class="btn-primary w-full">▶ Executar</button>
           <button id="stop-btn" onclick="stopRun()" class="btn-danger w-full hidden">⏹ Parar</button>
-          <div id="schedule-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
-            ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
-          </div>
         </div>
         <div class="flex-1 flex flex-col gap-4 min-w-0">
           <div class="card flex flex-col" style="flex:1; min-height:360px">
@@ -898,132 +892,8 @@ function clearLog() {
   if (r) { r.innerHTML = ''; r.classList.add('hidden'); }
 }
 
-function parseScheduleTime(value) {
-  const m = String(value || '').trim().match(/^(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
-  if (!m) return null;
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-  const ss = Number(m[3]);
-  const ms = Number((m[4] || '0').padEnd(3, '0'));
-  if (hh > 23 || mm > 59 || ss > 59 || ms > 999) return null;
-  const target = new Date();
-  target.setHours(hh, mm, ss, ms);
-  if (target.getTime() <= Date.now()) target.setDate(target.getDate() + 1);
-  return target;
-}
-
-function normalizeScheduleTime(value) {
-  const m = String(value || '').trim().match(/^(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
-  if (!m) return '';
-  return `${m[1]}:${m[2]}:${m[3]}`;
-}
-
-function formatScheduledAt(date) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date);
-}
-
-function updateScheduleStatus() {
-  for (const id of ['schedule-status', 'schedule-page-status']) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    if (!state.scheduledAt) {
-      el.classList.add('hidden');
-      el.textContent = '';
-    } else {
-      el.classList.remove('hidden');
-      el.textContent = `Agendado para ${formatScheduledAt(state.scheduledAt)}`;
-    }
-  }
-}
-
-function scheduleFormHtml() {
-  return `
-    <div class="schedule-modal schedule-page-panel">
-      <div class="schedule-modal-head">
-        <span class="schedule-info-icon">i</span>
-        <h3 class="text-xl font-bold text-white">Agendar Automação</h3>
-      </div>
-      <form id="schedule-form" class="schedule-modal-body">
-        <div class="form-group">
-          <label class="form-label">Horário de início <span class="text-gray-500 font-normal">(HH:MM:SS.MMM — ex: 06:00:00.000)</span></label>
-          <input id="schedule-time" class="form-input schedule-input" value="${esc(state.scheduledTime || '06:00:00.000')}" inputmode="numeric" placeholder="06:00:00.000">
-          <p class="form-hint">ⓘ Use milissegundos para precisão: 06:00:00.500 dispara no meio do segundo.</p>
-        </div>
-        <div id="schedule-page-status" class="schedule-status ${state.scheduledAt ? '' : 'hidden'}">
-          ${state.scheduledAt ? `Agendado para ${esc(formatScheduledAt(state.scheduledAt))}` : ''}
-        </div>
-        <div id="schedule-feedback" class="hidden result-badge result-err"></div>
-        <div class="schedule-modal-actions">
-          <button type="button" onclick="cancelScheduledAutomation()" class="btn-secondary">Cancelar</button>
-          <button type="submit" class="btn-primary">OK</button>
-        </div>
-      </form>
-    </div>
-  `;
-}
-
-function bindScheduleForm() {
-  document.getElementById('schedule-form').addEventListener('submit', e => {
-    e.preventDefault();
-    scheduleAutomation();
-  });
-  const input = document.getElementById('schedule-time');
-  input?.focus();
-  input?.select();
-}
-
-function renderSchedulePage() {
-  document.getElementById('content').innerHTML = `
-    <div class="p-6 max-w-xl">
-      ${scheduleFormHtml()}
-    </div>
-  `;
-  bindScheduleForm();
-}
-
-function scheduleAutomation() {
-  const input = document.getElementById('schedule-time');
-  const feedback = document.getElementById('schedule-feedback');
-  const raw = input?.value || '';
-  const target = parseScheduleTime(raw);
-  if (!target) {
-    if (feedback) {
-      feedback.textContent = 'Informe no formato HH:MM:SS.MMM. Ex: 06:00:00.000';
-      feedback.classList.remove('hidden');
-    }
-    return;
-  }
-
-  if (state.scheduleTimer) clearTimeout(state.scheduleTimer);
-  state.scheduledAt = target;
-  state.scheduledTime = normalizeScheduleTime(raw);
-  state.scheduleTimer = null;
-
-  updateScheduleStatus();
-  (async () => {
-    if (state.page !== 'run') await navigate('run');
-    if (!state.running) await startRun(state.scheduledTime);
-  })();
-  showToast(`Automação agendada para ${formatScheduledAt(target)}`);
-}
-
-function cancelScheduledAutomation() {
-  if (state.scheduleTimer) clearTimeout(state.scheduleTimer);
-  state.scheduleTimer = null;
-  state.scheduledAt = null;
-  state.scheduledTime = '';
-  updateScheduleStatus();
-  showToast('Agendamento cancelado.');
-}
-
 // ── Executar ───────────────────────────────────────────────
-async function startRun(horario = '') {
+async function startRun() {
   const settings = storage.getSettings();
   const allEvents = await loadEvents();
   const selected = Array.from(document.querySelectorAll('.ev-cb:checked'))
@@ -1045,12 +915,10 @@ async function startRun(horario = '') {
   const complete = selected.filter(ev => ev.data_evento).length;
   appendLog(`=== Batch rapido: ${selected.length} evento(s) ===`, 'text-teal-400 font-semibold');
   appendLog(`[INFO] ${complete}/${selected.length} evento(s) com data definida. Eventos sem data podem usar varredura e demorar mais.`, complete === selected.length ? 'text-gray-400' : 'text-yellow-300');
-  if (horario) appendLog(`[INFO] Stream armada para ${horario}. A preparacao comeca antes do horario alvo.`, 'text-yellow-300');
 
   const batchBody = {
     ...settingsToBody(settings),
     events: selected,
-    horario,
     fast_mode: true,
     batch_window_seconds: 0,
     batch_repeat_pause_seconds: 1,
@@ -1135,11 +1003,6 @@ async function startRun(horario = '') {
   }
 
   appendLog('\n=== Finalizado ===', 'text-teal-400 font-semibold');
-  if (horario) {
-    state.scheduledAt = null;
-    state.scheduledTime = '';
-    updateScheduleStatus();
-  }
   _setRunning(false);
   return;
 
@@ -1683,7 +1546,6 @@ async function renderPage() {
   else if (state.page === 'servicos') await renderServicosPage();
   else if (state.page === 'listar')   await renderListarPage();
   else if (state.page === 'run')      await renderRunPage();
-  else if (state.page === 'schedule') await renderSchedulePage();
   else if (state.page === 'settings') await renderSettingsPage();
   else if (state.page === 'help')     await renderHelpPage();
   else {

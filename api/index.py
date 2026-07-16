@@ -35,7 +35,6 @@ from proeis_http import (  # noqa: E402
     is_valid_captcha_answer,
     reparar_mojibake,
     run_batch_events,
-    wait_for_target_time,
 )
 
 app = FastAPI(title="PROEIS Bot API", version="1.0.0")
@@ -79,7 +78,6 @@ class RunRequest(BaseModel):
 
 class BatchRunRequest(BaseModel):
     events: list[RunRequest] = []
-    horario: str = ""
     fast_mode: bool = True
     batch_window_seconds: int = 0
     batch_repeat_pause_seconds: int = 1
@@ -975,7 +973,7 @@ async def run_batch_fast(body: BatchRunRequest):
                 ev.get("nome_evento", ""),
             ))
 
-            print(f"[OP] Batch rapido iniciado: id={op_id} | eventos={len(events)} | horario={body.horario or '-'}")
+            print(f"[OP] Batch rapido iniciado: id={op_id} | eventos={len(events)}")
             complete = sum(1 for ev in events if ev.get("data_evento"))
             print(f"[INFO] Modo rapido: {complete}/{len(events)} evento(s) com data definida; eventos sem data podem cair em varredura.")
 
@@ -994,21 +992,6 @@ async def run_batch_fast(body: BatchRunRequest):
                 _fetch_user_name_and_save(client)
             perf["session_ms"] = int((time.monotonic() - t_session) * 1000)
             print(f"[PERF] session_ms={perf['session_ms']}")
-
-            horario = (body.horario or "").strip()
-            if horario:
-                horario = re.sub(r"\.(\d{1,3})$", "", horario)
-                first = events[0]
-                print(f"[INFO] Execucao agendada armada para {horario}; preparando antes do horario alvo.")
-                t_wait = time.monotonic()
-                wait_for_target_time(
-                    horario,
-                    client=client,
-                    prefill_convenio=first.get("convenio", ""),
-                    prefill_date=first.get("data_evento", ""),
-                )
-                perf["scheduled_wait_ms"] = int((time.monotonic() - t_wait) * 1000)
-                print(f"[PERF] scheduled_wait_ms={perf['scheduled_wait_ms']}")
 
             t_batch = time.monotonic()
             confirmed = run_batch_events(
