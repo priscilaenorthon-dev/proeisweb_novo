@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import HTTPException, FastAPI, Request
+from fastapi import HTTPException, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -1577,6 +1577,38 @@ async def captcha_bench(request: Request):
             yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+# ── Frontend com versao automatica de cache ─────────────────────────────────
+# O index.html e servido dinamicamente com ?v=<hash do conteudo dos assets>.
+# Quando um deploy muda app.js/styles.css, as URLs mudam e o navegador baixa a
+# versao nova sozinho — sem precisar de recarregamento forcado no celular.
+def _asset_version() -> str:
+    import hashlib
+    h = hashlib.md5()
+    for name in ("index.html", "app.js", "styles.css", "proeis-fixes.js", "favicon.svg"):
+        try:
+            h.update((ROOT / "web" / name).read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+_INDEX_HTML = re.sub(
+    rb"\?v=[0-9A-Za-z._-]+",
+    f"?v={_asset_version()}".encode(),
+    (ROOT / "web" / "index.html").read_bytes(),
+)
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def index_page():
+    return Response(
+        content=_INDEX_HTML,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
 
 app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="static")
 
