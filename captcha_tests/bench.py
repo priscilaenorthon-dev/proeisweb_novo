@@ -131,6 +131,8 @@ PROMPT = (
 )
 
 
+import subprocess, tempfile
+
 def call_gemini(img: bytes, model: str, thinking: int = None, prompt: str = PROMPT, timeout=60):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={KEY}"
     gen = {"temperature": 0.0, "maxOutputTokens": 2048}
@@ -143,24 +145,29 @@ def call_gemini(img: bytes, model: str, thinking: int = None, prompt: str = PROM
         ]}],
         "generationConfig": gen,
     }
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump(payload, f); path = f.name
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            j = json.load(r)
+        p = subprocess.run(
+            ["curl", "-sS", "-X", "POST", url, "-H", "Content-Type: application/json", "--data", "@" + path],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        j = json.loads(p.stdout) if p.stdout.strip() else {}
+        if "error" in j:
+            return {"raw": "", "ans": "", "s": round(time.monotonic() - t0, 2), "err": j["error"].get("status", "ERR")}
         cands = j.get("candidates", [])
         txt = ""
         if cands:
-            for p in cands[0].get("content", {}).get("parts", []):
-                if "text" in p:
-                    txt += p["text"]
+            for part in cands[0].get("content", {}).get("parts", []):
+                if "text" in part:
+                    txt += part["text"]
         return {"raw": txt.strip(), "ans": norm_answer(txt), "s": round(time.monotonic() - t0, 2), "err": None}
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()[:150]
-        return {"raw": "", "ans": "", "s": round(time.monotonic() - t0, 2), "err": f"HTTP {e.code}: {body}"}
     except Exception as e:
         return {"raw": "", "ans": "", "s": round(time.monotonic() - t0, 2), "err": str(e)[:120]}
+    finally:
+        try: os.unlink(path)
+        except OSError: pass
 
 
 def load_images():
