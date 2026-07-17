@@ -455,7 +455,7 @@ GEMINI_API_KEY=AIzaSy...
 ### Opcionais de serviço
 
 ```env
-GEMINI_MODEL=gemini-3.5-flash       # Padrão atual (melhor acerto de captcha)
+GEMINI_MODEL=gemini-3.1-flash-lite  # Padrão (confiável + melhor acerto que 2.5-flash)
 CORS_ORIGINS=*
 ```
 

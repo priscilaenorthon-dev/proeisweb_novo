@@ -53,3 +53,29 @@ por tentativa reduz muito o número de captchas gastos por vaga.
 python captcha_tests/bench.py            # sanity (conta imagens + chave)
 # scripts de grade/painel: ver histórico no RESULTADOS e nos *.json salvos
 ```
+
+## Atualização — modelo de produção e coleta de dataset
+
+**Disponibilidade dos modelos (chave com billing pago):**
+- gemini-3.5-flash e gemini-flash-latest: retornam **503/indisponível** — o Google
+  faz *throttle* de modelos preview independentemente de pagamento. Inviáveis em
+  produção (validação ao vivo com 3.5-flash deu **0 vagas**).
+- **gemini-3.1-flash-lite: confiável** (100% nos testes), rápido (~1s).
+
+**Escolha final: gemini-3.1-flash-lite** (não o 3.5-flash, apesar do acerto offline
+maior, por ser instável). Validação ao vivo:
+- Aceitação do site: **~30% (2.5-flash antigo) → 40% (3.1-flash-lite)**
+- 28 vagas encontradas, 0 erros de rede, ~181s.
+
+**Coleta de dataset (base de aprendizado real):**
+Cada captcha resolvido é gravado no Firestore (`captcha_dataset`) com imagem crua +
+resposta + veredito do site (aceito/recusado). O site é um rotulador gratuito.
+Confirmado: 53 amostras rotuladas gravadas em uma única listagem.
+
+- `GET /api/captcha-dataset/stats` — acerto por modelo, total de amostras
+- `GET /api/captcha-dataset/export` — exporta amostras confirmadas p/ treino
+
+Isso NÃO "treina o Gemini" (não é possível via API; cada chamada é stateless).
+É a base para: (a) medir automaticamente qual modelo/pré-processamento acerta mais
+conforme os dados crescem; (b) futuramente treinar um solver OCR próprio (CRNN) nos
+dados confirmados — esse sim roda de graça e melhora a cada uso.
