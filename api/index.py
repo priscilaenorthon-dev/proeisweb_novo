@@ -325,6 +325,37 @@ def _session_collection():
         os.getenv("FIRESTORE_SESSION_COLLECTION", "proeis_session")
     )
 
+def _captcha_collection():
+    return _firestore_db().collection(os.getenv("FIRESTORE_CAPTCHA_COLLECTION", "captcha_dataset"))
+
+def _save_captcha_samples(client: ProeisHTTP) -> None:
+    """Persiste o dataset de captchas coletado nesta operacao (imagem + resposta +
+    veredito do site). Base para medir modelos e treinar um solver proprio.
+    Silencioso e defensivo: nunca interrompe a operacao principal."""
+    samples = getattr(client, "captcha_samples", None)
+    if not samples or os.getenv("CAPTCHA_COLLECT", "1") != "1":
+        return
+    try:
+        col = _captcha_collection()
+        now = datetime.now(timezone.utc).isoformat()
+        batch = _firestore_db().batch()
+        for i, s in enumerate(samples[:500]):
+            doc = col.document()
+            batch.set(doc, {
+                "image_b64": s.get("image_b64", ""),
+                "answer": s.get("answer", ""),
+                "accepted": bool(s.get("accepted", False)),
+                "model": s.get("model", ""),
+                "preproc": s.get("preproc", ""),
+                "created_at": now,
+            })
+            if (i + 1) % 400 == 0:
+                batch.commit(); batch = _firestore_db().batch()
+        batch.commit()
+        client.captcha_samples = []
+    except Exception as exc:
+        print(f"[CAPTCHA] Falha ao salvar dataset (ignorado): {exc}")
+
 def _save_session(client: ProeisHTTP, user_name: str) -> None:
     """Salva cookies e nome do usuario no Firestore para reutilizacao na proxima operacao."""
     try:
@@ -761,6 +792,7 @@ async def run_automation(body: RunRequest):
                 endereco=body.endereco,
             )
             _resave_current_session(client)
+            _save_captcha_samples(client)
             result["status"] = "confirmado" if confirmed >= body.quantidade else "pendente"
             result["confirmed"] = confirmed
 
@@ -1008,6 +1040,7 @@ async def run_batch_fast(body: BatchRunRequest):
             print(f"[PERF] batch_ms={perf['batch_ms']}")
 
             _resave_current_session(client)
+            _save_captcha_samples(client)
             result["confirmed"] = confirmed
             result["status"] = "confirmado" if confirmed > 0 else "pendente"
             result["message"] = ""
@@ -1124,6 +1157,7 @@ async def list_vagas(body: ListVagasRequest):
                 total = client.list_all_available_dates(body.convenio, body.cpa)
 
             _resave_current_session(client)
+            _save_captcha_samples(client)
             result["total"] = total
 
         except AutomationError as exc:
@@ -1425,6 +1459,62 @@ def captcha_dump(n: int = 10, source: str = "login"):
         errors.append(f"fatal: {exc}")
 
     return {"ok": bool(images), "count": len(images), "images": images, "errors": errors}
+
+
+@app.get("/api/captcha-dataset/stats")
+def captcha_dataset_stats():
+    """Estatisticas do dataset de captchas coletado do uso real (site = rotulador).
+    Mostra quantas amostras temos e a taxa de acerto por modelo — base para
+    medir melhorias e treinar um solver proprio."""
+    try:
+        docs = list(_captcha_collection().select(["accepted", "model"]).stream())
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "total": 0}
+    total = len(docs)
+    accepted = 0
+    by_model: dict[str, dict[str, int]] = {}
+    for d in docs:
+        v = d.to_dict() or {}
+        ok = bool(v.get("accepted"))
+        accepted += 1 if ok else 0
+        m = v.get("model", "?")
+        by_model.setdefault(m, {"total": 0, "accepted": 0})
+        by_model[m]["total"] += 1
+        by_model[m]["accepted"] += 1 if ok else 0
+    for m, st in by_model.items():
+        st["accuracy_pct"] = round(st["accepted"] / max(1, st["total"]) * 100, 1)
+    return {
+        "ok": True,
+        "total": total,
+        "accepted": accepted,
+        "accuracy_pct": round(accepted / max(1, total) * 100, 1),
+        "by_model": by_model,
+    }
+
+
+@app.get("/api/captcha-dataset/export")
+def captcha_dataset_export(limit: int = 500, only_accepted: bool = True):
+    """Exporta amostras do dataset (imagem base64 + resposta confirmada) para
+    treinar/avaliar um solver offline. only_accepted=1 traz so os confirmados
+    pelo site (rotulos corretos)."""
+    limit = max(1, min(int(limit), 2000))
+    try:
+        q = _captcha_collection()
+        if only_accepted:
+            q = q.where("accepted", "==", True)
+        docs = list(q.limit(limit).stream())
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "samples": []}
+    samples = []
+    for d in docs:
+        v = d.to_dict() or {}
+        samples.append({
+            "image_b64": v.get("image_b64", ""),
+            "answer": v.get("answer", ""),
+            "accepted": bool(v.get("accepted")),
+            "model": v.get("model", ""),
+        })
+    return {"ok": True, "count": len(samples), "samples": samples}
 
 
 @app.post("/api/captcha-bench")

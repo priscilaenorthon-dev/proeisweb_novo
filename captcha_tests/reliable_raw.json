@@ -1,0 +1,1022 @@
+{
+ "2.5-flash|off": {
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.65,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.66,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.72,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.72,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.71,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.75,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.76,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.81,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.83,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.86,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.02,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.26,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.54,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.26,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.38,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.49,
+   "err": "PERMISSION_DENIED"
+  }
+ },
+ "2.5-flash-lite|off": {
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.22,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.62,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.26,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.41,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.6,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.84,
+   "err": "PERMISSION_DENIED"
+  }
+ },
+ "3.1-flash-lite|off": {
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.2,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.41,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.27,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.29,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.61,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.69,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.28,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.49,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.78,
+   "err": "PERMISSION_DENIED"
+  }
+ },
+ "3.1-flash-lite|up": {
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.39,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.45,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.36,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.36,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.53,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.39,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.9,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.57,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.77,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.97,
+   "err": "PERMISSION_DENIED"
+  }
+ },
+ "3.1-flash-lite|lines": {
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.43,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.57,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.38,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.37,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.42,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.52,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.47,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.43,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.42,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.44,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.45,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.36,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.36,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.78,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.7,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.92,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.11,
+   "err": "PERMISSION_DENIED"
+  }
+ },
+ "2.5-flash|up": {
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.39,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.47,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.38,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.54,
+   "err": "PERMISSION_DENIED"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.45,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.39,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.31,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.34,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.33,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.32,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.5,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.3,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.38,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.44,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.38,
+   "err": "PERMISSION_DENIED"
+  },
+  "val_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.64,
+   "err": "PERMISSION_DENIED"
+  }
+ }
+}
