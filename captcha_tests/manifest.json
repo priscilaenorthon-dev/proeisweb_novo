@@ -1,0 +1,72 @@
+[
+  {
+    "file": "cap_00_login.png",
+    "source": "login",
+    "bytes": 11168
+  },
+  {
+    "file": "cap_01_login.png",
+    "source": "login",
+    "bytes": 12886
+  },
+  {
+    "file": "cap_02_login.png",
+    "source": "login",
+    "bytes": 12521
+  },
+  {
+    "file": "cap_03_login.png",
+    "source": "login",
+    "bytes": 12785
+  },
+  {
+    "file": "cap_04_login.png",
+    "source": "login",
+    "bytes": 11538
+  },
+  {
+    "file": "cap_05_login.png",
+    "source": "login",
+    "bytes": 12678
+  },
+  {
+    "file": "cap_06_login.png",
+    "source": "login",
+    "bytes": 13742
+  },
+  {
+    "file": "cap_07_login.png",
+    "source": "login",
+    "bytes": 13035
+  },
+  {
+    "file": "cap_08_filter.png",
+    "source": "filter",
+    "bytes": 12645
+  },
+  {
+    "file": "cap_09_filter.png",
+    "source": "filter",
+    "bytes": 13358
+  },
+  {
+    "file": "cap_10_filter.png",
+    "source": "filter",
+    "bytes": 13445
+  },
+  {
+    "file": "cap_11_filter.png",
+    "source": "filter",
+    "bytes": 11931
+  },
+  {
+    "file": "cap_12_filter.png",
+    "source": "filter",
+    "bytes": 12227
+  },
+  {
+    "file": "cap_13_filter.png",
+    "source": "filter",
+    "bytes": 11845
+  }
+]

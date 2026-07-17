@@ -1,0 +1,151 @@
+{
+ "cap_00_login.png": {
+  "label": "D7136B",
+  "score": 6,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "D7136B": 6,
+   "D7736B": 3
+  }
+ },
+ "cap_01_login.png": {
+  "label": "8C9537",
+  "score": 8,
+  "total": 10,
+  "conf": "ALTA",
+  "dist": {
+   "C95377": 1,
+   "8C9537": 8,
+   "C85371": 1
+  }
+ },
+ "cap_02_login.png": {
+  "label": "6CADBD",
+  "score": 7,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "6CADBD": 7,
+   "6CADED": 2
+  }
+ },
+ "cap_03_login.png": {
+  "label": "0800BC",
+  "score": 6,
+  "total": 8,
+  "conf": "ALTA",
+  "dist": {
+   "800BC0": 1,
+   "0800BC": 6,
+   "800BCC": 1
+  }
+ },
+ "cap_04_login.png": {
+  "label": "4E18D7",
+  "score": 5,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "4E78D1": 1,
+   "4E18D7": 5,
+   "4E78D9": 1,
+   "4E78D7": 2
+  }
+ },
+ "cap_05_login.png": {
+  "label": "FAEB1D",
+  "score": 5,
+  "total": 10,
+  "conf": "ALTA",
+  "dist": {
+   "EAEB1D": 3,
+   "FAEB1D": 5,
+   "4AEB1D": 2
+  }
+ },
+ "cap_06_login.png": {
+  "label": "963A91",
+  "score": 9,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "963A91": 9
+  }
+ },
+ "cap_07_login.png": {
+  "label": "43EBB3",
+  "score": 6,
+  "total": 10,
+  "conf": "ALTA",
+  "dist": {
+   "43BB37": 1,
+   "43EBB3": 6,
+   "43BB31": 1,
+   "43FBB3": 2
+  }
+ },
+ "cap_08_filter.png": {
+  "label": "0C8634",
+  "score": 7,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "088634": 1,
+   "0C8634": 7,
+   "0C63A4": 1
+  }
+ },
+ "cap_09_filter.png": {
+  "label": "C24260",
+  "score": 9,
+  "total": 10,
+  "conf": "ALTA",
+  "dist": {
+   "C24260": 9,
+   "C426E0": 1
+  }
+ },
+ "cap_10_filter.png": {
+  "label": "96BFF1",
+  "score": 4,
+  "total": 10,
+  "conf": "MEDIA",
+  "dist": {
+   "96BAF1": 1,
+   "96BFF1": 4,
+   "96BFF7": 4,
+   "96BF4C": 1
+  }
+ },
+ "cap_11_filter.png": {
+  "label": "15B7DE",
+  "score": 9,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "15B7DE": 9
+  }
+ },
+ "cap_12_filter.png": {
+  "label": "EE0716",
+  "score": 7,
+  "total": 9,
+  "conf": "ALTA",
+  "dist": {
+   "E07716": 1,
+   "EE0716": 7,
+   "E10726": 1
+  }
+ },
+ "cap_13_filter.png": {
+  "label": "865909",
+  "score": 7,
+  "total": 8,
+  "conf": "ALTA",
+  "dist": {
+   "865909": 7,
+   "865929": 1
+  }
+ }
+}

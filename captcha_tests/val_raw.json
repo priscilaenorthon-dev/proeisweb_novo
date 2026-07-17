@@ -1,0 +1,604 @@
+{
+ "ATUAL:2.5-flash|off": {
+  "val_00_login.png": {
+   "raw": "6C04E9",
+   "ans": "6C04E9",
+   "s": 3.97,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "60AEB5",
+   "ans": "60AEB5",
+   "s": 4.3,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 4.36,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 4.41,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "221687",
+   "ans": "221687",
+   "s": 4.77,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 5.0,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 5.5,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 5.64,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "01DDA6",
+   "ans": "01DDA6",
+   "s": 5.91,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 6.16,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "EF752D",
+   "ans": "EF752D",
+   "s": 7.11,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 4.25,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 4.85,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 18.66,
+   "err": null
+  }
+ },
+ "3.5-flash|off|t0": {
+  "val_00_login.png": {
+   "raw": "6049E",
+   "ans": "6049E",
+   "s": 2.52,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 2.03,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 2.92,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 5.62,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF152",
+   "ans": "4EF152",
+   "s": 5.9,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 5.95,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 6.17,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 5.88,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 4.13,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 7.5,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 7.36,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 10.01,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 25.66,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 60.19,
+   "err": "The read operation timed out"
+  }
+ },
+ "3.5-flash|lines|t0": {
+  "val_00_login.png": {
+   "raw": "6049E5",
+   "ans": "6049E5",
+   "s": 1.28,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 2.31,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 2.58,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 1.14,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 1.44,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 1.99,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 1.42,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "Based on the visual analysis of the CAPTCHA, ignoring the background noise, lines, and dots, we can identify the 6 main characters from left to right:\n\n1. **D** (pinkish-purple letter on the far left)\n2. **9** (dark grey/blue digit below the D)\n3. **B** (purple letter tilted near the top-middle)\n4. **8** (green digit in the middle)\n5. **F** (pinkish-red letter tilted in the middle-right)\n6. **8** (orange/grey digit on the far right)\n\n**D9B8F8**",
+   "ans": "BA5ED0NTHEV15UA1ANA1Y5150FTHECAPTCHA16N0R1N6THEBACK6R0UNDN015E11NE5ANDD0T5WECAN1DENT1FYTHE6MA1NCHARACTER5FR0M1EFTT0R16HT1DP1NK15HPURP1E1ETTER0NTHEFAR1EFT29DARK6REYB1UED161TBE10WTHED3BPURP1E1ETTERT11TEDNEARTHET0PM1DD1E486REEND161T1NTHEM1DD1E5FP1NK15HRED1ETTERT11TED1NTHEM1DD1ER16HT680RAN6E6REYD161T0NTHEFARR16HTD9B8F8",
+   "s": 2.23,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF752",
+   "ans": "4EF752",
+   "s": 6.67,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 7.64,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 6.26,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 7.86,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 6.24,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 7.96,
+   "err": null
+  }
+ },
+ "3.5-flash|up|t0": {
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 4.11,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 5.47,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 1.68,
+   "err": null
+  },
+  "val_00_login.png": {
+   "raw": "6049E5",
+   "ans": "6049E5",
+   "s": 7.38,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 2.02,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 3.17,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 6.04,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 5.06,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 1.5,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 3.52,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 3.62,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 8.57,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF152",
+   "ans": "4EF152",
+   "s": 49.59,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 54.28,
+   "err": null
+  }
+ },
+ "flash-latest|up|t0": {
+  "val_00_login.png": {
+   "raw": "6049E5",
+   "ans": "6049E5",
+   "s": 1.3,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 1.76,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 1.27,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 1.21,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 1.76,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF152",
+   "ans": "4EF152",
+   "s": 2.82,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 1.22,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 1.31,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CECF",
+   "ans": "F4CECF",
+   "s": 1.17,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 1.29,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 1.29,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 1.26,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 5.11,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 33.94,
+   "err": null
+  }
+ },
+ "flash-latest|off|t0": {
+  "val_00_login.png": {
+   "raw": "6049E",
+   "ans": "6049E",
+   "s": 1.64,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF152",
+   "ans": "4EF152",
+   "s": 1.11,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 1.55,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 1.11,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 1.11,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "D8AB0C",
+   "ans": "D8AB0C",
+   "s": 1.16,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 1.22,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 1.27,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 1.28,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 1.14,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 1.48,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 1.42,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 1.68,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 1.79,
+   "err": null
+  }
+ },
+ "3.1-flash-lite|off|t0": {
+  "val_00_login.png": {
+   "raw": "6049EF",
+   "ans": "6049EF",
+   "s": 1.0,
+   "err": null
+  },
+  "val_01_login.png": {
+   "raw": "6A5CC3",
+   "ans": "6A5CC3",
+   "s": 1.12,
+   "err": null
+  },
+  "val_03_login.png": {
+   "raw": "604EB5",
+   "ans": "604EB5",
+   "s": 0.94,
+   "err": null
+  },
+  "val_02_login.png": {
+   "raw": "4EF152",
+   "ans": "4EF152",
+   "s": 1.11,
+   "err": null
+  },
+  "val_04_login.png": {
+   "raw": "7FA181",
+   "ans": "7FA181",
+   "s": 1.15,
+   "err": null
+  },
+  "val_05_login.png": {
+   "raw": "09ECE7",
+   "ans": "09ECE7",
+   "s": 0.83,
+   "err": null
+  },
+  "val_07_login.png": {
+   "raw": "8AB00C",
+   "ans": "8AB00C",
+   "s": 0.81,
+   "err": null
+  },
+  "val_08_filter.png": {
+   "raw": "C1DDA6",
+   "ans": "C1DDA6",
+   "s": 0.76,
+   "err": null
+  },
+  "val_06_login.png": {
+   "raw": "22F687",
+   "ans": "22F687",
+   "s": 0.93,
+   "err": null
+  },
+  "val_11_filter.png": {
+   "raw": "3AD606",
+   "ans": "3AD606",
+   "s": 0.72,
+   "err": null
+  },
+  "val_10_filter.png": {
+   "raw": "F4CFCF",
+   "ans": "F4CFCF",
+   "s": 0.96,
+   "err": null
+  },
+  "val_09_filter.png": {
+   "raw": "D9B8F8",
+   "ans": "D9B8F8",
+   "s": 1.24,
+   "err": null
+  },
+  "val_12_filter.png": {
+   "raw": "3D87C8",
+   "ans": "3D87C8",
+   "s": 0.96,
+   "err": null
+  },
+  "val_13_filter.png": {
+   "raw": "97E8FB",
+   "ans": "97E8FB",
+   "s": 0.93,
+   "err": null
+  }
+ }
+}

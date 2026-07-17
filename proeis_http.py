@@ -100,7 +100,7 @@ def _preprocess_captcha_image(image_bytes: bytes, mode: str | None = None) -> by
       - 'clean'    : OpenCV — remove bolinhas por saturação + CLAHE (melhor leitura)
       - 'off'      : não altera
     """
-    mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "clean")).strip().lower()
+    mode = (mode or os.getenv("CAPTCHA_PREPROCESS", "off")).strip().lower()
     if mode == "off":
         return image_bytes
     if mode == "clean":
@@ -436,7 +436,7 @@ class ProeisHTTP:
         self.captcha_elapsed_seconds = 0.0
         self.consecutive_site_rejections = 0
         _op_start()
-        _model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") if gemini_api_key else "nenhum"
+        _model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
 
     # â"€â"€ HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -736,9 +736,9 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        primary = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "1"))
-        fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-2.5-flash").strip()
+        fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-3.5-flash").strip()
         if fallback_model and self.bad_captcha_reports >= fallback_after:
             if primary != fallback_model:
                 _log(
@@ -827,7 +827,7 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         processed = _preprocess_captcha_image(image, mode=preprocess)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
@@ -851,11 +851,14 @@ class ProeisHTTP:
         parts.append(
             {
                 "text": (
-                    "Read this PROEIS CAPTCHA. It has EXACTLY 6 uppercase hexadecimal characters.\n"
-                    "Allowed characters only: 0 1 2 3 4 5 6 7 8 9 A B C D E F.\n"
-                    "The first image is original. If a second image is present, it is the same captcha enhanced for OCR.\n"
-                    "Compare both images and return the best visual reading.\n"
-                    "Common confusions: O/Q -> 0, I/L -> 1, S -> 5, G -> 6, Z -> 2.\n"
+                    "Read this PROEIS CAPTCHA. It has EXACTLY 6 characters, each a hexadecimal "
+                    "digit: only 0 1 2 3 4 5 6 7 8 9 A B C D E F (uppercase).\n"
+                    "The characters are colored and overlaid with random colored dots and thin "
+                    "gray lines - ignore the dots and lines, read only the 6 aligned characters "
+                    "left to right.\n"
+                    "If a second image is present, it is the same captcha enhanced for OCR; "
+                    "use both to decide the best reading.\n"
+                    "Common confusions: O/Q -> 0, I/L -> 1, S -> 5, G -> 6, Z -> 2, B vs 8, D vs 0.\n"
                     "Never answer with placeholders like ABCDEF. Never add spaces, punctuation, JSON or explanation.\n"
                     "Return ONLY the 6 characters."
                 )
