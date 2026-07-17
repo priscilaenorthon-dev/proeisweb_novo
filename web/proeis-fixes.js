@@ -153,14 +153,15 @@
 
   function ensureLogsNav() {
     if (document.getElementById('nav-logs')) return;
-    const settings = document.getElementById('nav-settings');
-    if (!settings || !settings.parentNode) return;
+    // ancora no botao Ajuda (o Config foi removido do app)
+    const anchor = document.getElementById('nav-help');
+    if (!anchor || !anchor.parentNode) return;
     const btn = document.createElement('button');
     btn.onclick = () => window.navigate('logs');
     btn.id = 'nav-logs';
     btn.className = 'nav-item w-full';
     btn.innerHTML = '<span class="nav-icon">🧾</span><span class="nav-label">Logs</span>';
-    settings.parentNode.insertBefore(btn, settings);
+    anchor.parentNode.insertBefore(btn, anchor);
   }
 
   async function renderLogsPage() {
