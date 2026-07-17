@@ -1,7 +1,6 @@
 samples/
 compare*.png
-train_log.txt
-label_log.txt
 real_labels.json
 *.pt
 *.onnx
+*_log.txt
