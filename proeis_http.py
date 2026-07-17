@@ -37,6 +37,52 @@ try:
 except ImportError:
     _CV2_AVAILABLE = False
 
+try:
+    import numpy as _numpy
+    _NUMPY_AVAILABLE = True
+except ImportError:
+    _NUMPY_AVAILABLE = False
+
+# ── OCR local (ONNX) ─────────────────────────────────────────────────────────
+# Modelo proprio (CNN treinada nos nossos captchas reais) servido via onnxruntime.
+# E o solver PRIMARIO: gratuito e rapido (~5ms), ~43% string / 87% char no gold —
+# na mesma faixa do Gemini, porem sem custo. O Gemini vira fallback so quando o
+# site recusa a resposta local.
+_ONNX_CHARS = "0123456789ABCDEF"
+_ONNX_IH, _ONNX_IW = 64, 160
+_ONNX_SESSION = None
+_ONNX_LOAD_FAILED = False
+_ONNX_LOCK = threading.Lock()
+
+
+def _get_onnx_session():
+    """Carrega (uma vez) a sessao onnxruntime do modelo OCR local. Retorna None se indisponivel."""
+    global _ONNX_SESSION, _ONNX_LOAD_FAILED
+    if _ONNX_SESSION is not None or _ONNX_LOAD_FAILED:
+        return _ONNX_SESSION
+    with _ONNX_LOCK:
+        if _ONNX_SESSION is not None or _ONNX_LOAD_FAILED:
+            return _ONNX_SESSION
+        try:
+            import onnxruntime as ort  # type: ignore
+            model_path = os.getenv("CAPTCHA_ONNX_PATH") or str(
+                Path(__file__).resolve().parent / "captcha_tests" / "train" / "model.onnx"
+            )
+            if not os.path.exists(model_path):
+                _ONNX_LOAD_FAILED = True
+                return None
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = 1
+            so.inter_op_num_threads = 1
+            _ONNX_SESSION = ort.InferenceSession(
+                model_path, sess_options=so, providers=["CPUExecutionProvider"]
+            )
+            _log("CAPTCHA", f"Modelo OCR local (ONNX) carregado: {model_path}")
+        except Exception as exc:  # noqa: BLE001
+            _ONNX_LOAD_FAILED = True
+            _log("CAPTCHA", f"OCR local indisponivel ({str(exc)[:80]}); usando Gemini.")
+    return _ONNX_SESSION
+
 
 def _clean_captcha_cv2(image_bytes: bytes) -> bytes | None:
     """Limpeza avançada via OpenCV: remove bolinhas coloridas (alta saturação),
@@ -440,6 +486,7 @@ class ProeisHTTP:
         # rotulado (site = rotulador gratuito) para medir modelos e treinar solver proprio.
         self._pending_captcha: dict | None = None
         self.captcha_samples: list[dict] = []
+        self.last_solver: str | None = None
         _op_start()
         _model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
@@ -729,11 +776,53 @@ class ProeisHTTP:
 
         raise AutomationError(last_error or "Solver nao retornou uma resposta valida.")
 
+    def _solve_via_onnx(self, image: bytes) -> tuple[str, float] | None:
+        """Resolve o captcha com o modelo OCR local (ONNX). Retorna (texto, confianca)
+        ou None se o modelo/onnxruntime nao estiver disponivel."""
+        if not (_PIL_AVAILABLE and _NUMPY_AVAILABLE):
+            return None
+        sess = _get_onnx_session()
+        if sess is None:
+            return None
+        try:
+            pil = Image.open(_io.BytesIO(image)).convert("RGB").resize(
+                (_ONNX_IW, _ONNX_IH), Image.BILINEAR
+            )
+            a = _numpy.asarray(pil, dtype=_numpy.float32) / 255.0
+            x = _numpy.transpose(a, (2, 0, 1))[None]  # 1,C,H,W
+            logits = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]  # 6,16
+            e = _numpy.exp(logits - logits.max(axis=1, keepdims=True))
+            p = e / e.sum(axis=1, keepdims=True)
+            idx = p.argmax(axis=1)
+            conf = float(p[_numpy.arange(len(idx)), idx].min())
+            text = "".join(_ONNX_CHARS[int(i)] for i in idx)
+            return text, conf
+        except Exception as exc:  # noqa: BLE001
+            _log("CAPTCHA", f"[OCR-local] falhou ({str(exc)[:80]}); recorrendo ao Gemini.")
+            return None
+
     def solve_captcha_once(self, image: bytes) -> str:
-        """Envia imagem ao Gemini e retorna a resposta valida."""
+        """Resolve o captcha. Solver primario = OCR local (ONNX, gratuito). O Gemini
+        e fallback: entra quando o site ja recusou uma resposta local nesta sessao
+        (captcha dificil) ou quando o modelo local esta indisponivel."""
         t0 = time.monotonic()
         try:
-            return self._solve_parallel_all_solvers(image)
+            # Apos o site recusar N vezes, escala direto para o Gemini (leitura mais forte).
+            onnx_max_rejects = int(os.getenv("CAPTCHA_ONNX_MAX_REJECTS", "1"))
+            if self.consecutive_site_rejections < onnx_max_rejects:
+                onnx = self._solve_via_onnx(image)
+                if onnx is not None:
+                    text, conf = onnx
+                    min_conf = float(os.getenv("CAPTCHA_ONNX_MIN_CONF", "0"))
+                    if len(text) == 6 and conf >= min_conf:
+                        self.last_solver = "ocr-local"
+                        self.last_captcha_id = None
+                        _log("CAPTCHA", f"Vencedor: OCR-local | resposta={text} (conf={conf:.2f})")
+                        return text
+            self.last_solver = None  # marcado dentro do caminho Gemini
+            text = self._solve_parallel_all_solvers(image)
+            self.last_solver = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+            return text
         finally:
             self.captcha_elapsed_seconds += time.monotonic() - t0
 
@@ -982,7 +1071,7 @@ class ProeisHTTP:
             self._pending_captcha = {
                 "image_b64": base64.b64encode(image).decode("ascii"),
                 "answer": answer,
-                "model": os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+                "model": self.last_solver or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
                 "preproc": os.getenv("CAPTCHA_PREPROCESS", "off"),
             }
         except Exception:
