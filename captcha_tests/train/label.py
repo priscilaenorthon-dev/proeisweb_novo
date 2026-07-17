@@ -44,8 +44,16 @@ def label_image(path):
 
 def main():
     files = sorted(glob.glob(REAL + "/*.png"))
-    print(f"imagens a rotular: {len(files)}", flush=True)
+    # retoma: nao re-rotula o que ja tem rotulo salvo
     labels = {}
+    if os.path.exists(OUT):
+        try:
+            labels = json.load(open(OUT))
+        except Exception:
+            labels = {}
+    before = len(labels)
+    files = [f for f in files if os.path.basename(f) not in labels]
+    print(f"ja rotulados: {before} | novas imagens a rotular: {len(files)}", flush=True)
     lock = threading.Lock()
     done = [0]
     def work(path):
