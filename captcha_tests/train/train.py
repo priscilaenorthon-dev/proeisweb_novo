@@ -69,6 +69,9 @@ def load_real():
 
 
 class CaptchaNet(nn.Module):
+    """CNN que preserva a posição horizontal: as 6 colunas do mapa de features
+    viram os 6 caracteres (cada coluna -> 1 char). Generaliza muito melhor que
+    average pooling global."""
     def __init__(self, nchars=6, nclasses=16):
         super().__init__()
         def blk(i, o):
@@ -76,16 +79,20 @@ class CaptchaNet(nn.Module):
                                  nn.ReLU(), nn.Conv2d(o, o, 3, padding=1), nn.BatchNorm2d(o),
                                  nn.ReLU(), nn.MaxPool2d(2))
         self.features = nn.Sequential(blk(3, 32), blk(32, 64), blk(64, 128), blk(128, 256))
-        # 64x160 -> /16 -> 4x10
-        self.head = nn.Sequential(nn.AdaptiveAvgPool2d((2, 6)), nn.Flatten(),
-                                  nn.Linear(256 * 2 * 6, 512), nn.ReLU(), nn.Dropout(0.3),
-                                  nn.Linear(512, nchars * nclasses))
+        # 64x160 -> /16 -> 4x10. Reduz altura a 1 e largura a 6 (6 slots de char).
+        self.col_pool = nn.AdaptiveAvgPool2d((1, nchars))       # -> B,256,1,6
+        self.classifier = nn.Sequential(
+            nn.Conv2d(256, 256, 1), nn.BatchNorm2d(256), nn.ReLU(), nn.Dropout(0.3),
+            nn.Conv2d(256, nclasses, 1),                        # -> B,16,1,6
+        )
         self.nchars, self.nclasses = nchars, nclasses
 
     def forward(self, x):
         x = self.features(x)
-        x = self.head(x)
-        return x.view(-1, self.nchars, self.nclasses)
+        x = self.col_pool(x)
+        x = self.classifier(x)              # B,16,1,6
+        x = x.squeeze(2).permute(0, 2, 1)   # B,6,16
+        return x
 
 
 def accuracy(model, X, Y, bs=64):

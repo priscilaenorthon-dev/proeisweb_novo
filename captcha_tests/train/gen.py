@@ -52,25 +52,26 @@ def gen_captcha(rng=None):
     # 1) camada de bolinhas ATRÁS dos caracteres (esparsas, pequenas — como no real)
     draw_dots(12, 24)
 
-    # 2) caracteres: dominantes, por cima; fonte/cor/rotação próprias
-    x = rng.uniform(10, 22)
-    for ch in text:
-        fsize = rng.randint(42, 58)
+    # 2) caracteres: SEMPRE os 6, em slots igualmente espaçados que cabem na
+    #    largura (com jitter). Cada um centralizado no seu slot -> nunca some char.
+    margin = 10
+    slot_w = (W - 2 * margin) / 6.0  # ~38px por caractere
+    for i, ch in enumerate(text):
+        fsize = rng.randint(40, 54)
         font = ImageFont.truetype(rng.choice(_FONTS), fsize)
         color = _rand_color(rng)
-        layer = Image.new("RGBA", (fsize + 20, fsize + 30), (0, 0, 0, 0))
+        layer = Image.new("RGBA", (fsize + 24, fsize + 30), (0, 0, 0, 0))
         ld = ImageDraw.Draw(layer)
         if rng.random() < 0.45:  # contorno (stroke), como muitos chars do PROEIS
-            ld.text((10, 5), ch, font=font, fill=(255, 255, 255, 0),
+            ld.text((12, 5), ch, font=font, fill=(255, 255, 255, 0),
                     stroke_width=2, stroke_fill=color + (255,))
         else:                    # preenchido, semi-translúcido
-            ld.text((10, 5), ch, font=font, fill=color + (rng.randint(170, 255),))
-        layer = layer.rotate(rng.uniform(-25, 25), expand=True, resample=Image.BICUBIC)
-        y = rng.uniform(4, 14)
-        img.paste(layer, (int(x), int(y)), layer)
-        x += rng.uniform(fsize * 0.60, fsize * 0.78)
-        if x > W - 28:
-            break
+            ld.text((12, 5), ch, font=font, fill=color + (rng.randint(180, 255),))
+        layer = layer.rotate(rng.uniform(-22, 22), expand=True, resample=Image.BICUBIC)
+        # centro do slot i, com pequeno jitter horizontal/vertical
+        cx = margin + slot_w * (i + 0.5) + rng.uniform(-4, 4)
+        cy = H / 2 + rng.uniform(-6, 6)
+        img.paste(layer, (int(cx - layer.width / 2), int(cy - layer.height / 2)), layer)
 
     # 3) poucas bolinhas por cima (algumas cobrem parcialmente os chars, como no real)
     draw_dots(8, 18)
