@@ -435,8 +435,13 @@ class ProeisHTTP:
         self.site_elapsed_seconds = 0.0
         self.captcha_elapsed_seconds = 0.0
         self.consecutive_site_rejections = 0
+        # Coleta de dataset de captcha: cada resolucao guarda (imagem crua, resposta,
+        # modelo); quando o site aceita/recusa, o resultado e anexado. Vira dataset
+        # rotulado (site = rotulador gratuito) para medir modelos e treinar solver proprio.
+        self._pending_captcha: dict | None = None
+        self.captcha_samples: list[dict] = []
         _op_start()
-        _model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash") if gemini_api_key else "nenhum"
+        _model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
 
     # â"€â"€ HTTP â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -679,6 +684,7 @@ class ProeisHTTP:
             try:
                 captcha = self.extract_captcha_image(current_soup)
                 text = self.solve_captcha_once(captcha)
+                self._remember_captcha(captcha, text)
                 return current_soup, text
             except CaptchaInvalidAnswerError as exc:
                 last_error = str(exc)
@@ -736,9 +742,9 @@ class ProeisHTTP:
         if not self.gemini_api_key:
             raise AutomationError("Nenhum solver de captcha configurado (GEMINI_API_KEY).")
 
-        primary = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        primary = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
         fallback_after = int(os.getenv("GEMINI_PRO_FALLBACK_AFTER_REJECTS", "1"))
-        fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-3.5-flash").strip()
+        fallback_model = os.getenv("GEMINI_PRO_FALLBACK_MODEL", "gemini-2.5-flash").strip()
         if fallback_model and self.bad_captcha_reports >= fallback_after:
             if primary != fallback_model:
                 _log(
@@ -827,7 +833,7 @@ class ProeisHTTP:
         if stop_event and stop_event.is_set():
             raise AutomationError("resolucao paralela cancelada apos vencedor")
 
-        model = model or os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+        model = model or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
         processed = _preprocess_captcha_image(image, mode=preprocess)
         if len(processed) != len(image):
             _log("CAPTCHA", f"[Gemini] Preprocessamento: {len(image)}B -> {len(processed)}B")
@@ -968,16 +974,44 @@ class ProeisHTTP:
     def normalize_captcha_answer(self, value: str) -> str:
         return normalize_captcha_answer(value)
 
+    def _remember_captcha(self, image: bytes, answer: str) -> None:
+        """Guarda a ultima resolucao (imagem crua + resposta) ate o site julgar."""
+        if os.getenv("CAPTCHA_COLLECT", "1") != "1":
+            return
+        try:
+            self._pending_captcha = {
+                "image_b64": base64.b64encode(image).decode("ascii"),
+                "answer": answer,
+                "model": os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+                "preproc": os.getenv("CAPTCHA_PREPROCESS", "off"),
+            }
+        except Exception:
+            self._pending_captcha = None
+
+    def _label_pending_captcha(self, accepted: bool) -> None:
+        """Anexa o veredito do site (aceito/recusado) a ultima resolucao pendente."""
+        sample = self._pending_captcha
+        self._pending_captcha = None
+        if not sample:
+            return
+        sample["accepted"] = accepted
+        # cap defensivo para nao estourar memoria/payload numa varredura longa
+        if len(self.captcha_samples) < 500:
+            self.captcha_samples.append(sample)
+
     def report_bad_captcha(self) -> None:
         self.bad_captcha_reports += 1
         self.consecutive_site_rejections += 1
+        self._label_pending_captcha(False)
 
     def report_bad_captcha_id(self, captcha_id: str | None) -> None:
         self.bad_captcha_reports += 1
         self.consecutive_site_rejections += 1
+        self._label_pending_captcha(False)
 
     def report_good_captcha(self) -> None:
         self.consecutive_site_rejections = 0
+        self._label_pending_captcha(True)
 
     def refresh_page_captcha(self, soup: BeautifulSoup) -> BeautifulSoup | None:
         _log("CAPTCHA", "Procurando controle para gerar nova imagem de captcha...")
