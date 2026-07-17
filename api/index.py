@@ -1373,6 +1373,60 @@ def session_keepalive_web(body: TestLoginRequest):
 
 from starlette.staticfiles import StaticFiles
 
+
+@app.get("/api/captcha-dump")
+def captcha_dump(n: int = 10, source: str = "login"):
+    """Ferramenta de laboratorio: coleta N imagens de captcha reais e devolve
+    em base64 (sem resolver). Usado pelos testes em captcha_tests/. Somente
+    imagens anonimas de captcha; nao expoe dados sensiveis."""
+    load_env_file()
+    n = max(1, min(int(n), 30))
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+
+    client = ProeisHTTP(login=login_val, password=password_val, gemini_api_key=gemini_key, debug=False)
+    images: list[str] = []
+    errors: list[str] = []
+
+    try:
+        if source == "filter":
+            if not _try_restore_session(client):
+                login_with_retries(client, "captcha-dump")
+            client.navigate_to_service_page()
+            soup = client.require_soup()
+        else:
+            base_soup = client.request("GET", DEFAULT_URL)
+            payload = client.form_payload(base_soup)
+            payload["ddlTipoAcesso"] = "ID"
+            payload["__EVENTTARGET"] = "ddlTipoAcesso"
+            soup = client.post_form(payload, DEFAULT_URL)
+
+        for i in range(n):
+            try:
+                img = client.extract_captcha_image(soup)
+                images.append(base64.b64encode(img).decode("ascii"))
+            except Exception as exc:
+                errors.append(f"#{i}: {exc}")
+            if i < n - 1:
+                refreshed = client.refresh_page_captcha(soup)
+                if refreshed:
+                    soup = refreshed
+                elif source == "filter":
+                    client.navigate_to_service_page()
+                    soup = client.require_soup()
+                else:
+                    base_soup = client.request("GET", DEFAULT_URL)
+                    payload = client.form_payload(base_soup)
+                    payload["ddlTipoAcesso"] = "ID"
+                    payload["__EVENTTARGET"] = "ddlTipoAcesso"
+                    soup = client.post_form(payload, DEFAULT_URL)
+    except Exception as exc:
+        errors.append(f"fatal: {exc}")
+
+    return {"ok": bool(images), "count": len(images), "images": images, "errors": errors}
+
+
 @app.post("/api/captcha-bench")
 async def captcha_bench(request: Request):
     """
