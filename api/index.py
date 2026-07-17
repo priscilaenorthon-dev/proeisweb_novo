@@ -1414,7 +1414,7 @@ def captcha_dump(n: int = 10, source: str = "login"):
     em base64 (sem resolver). Usado pelos testes em captcha_tests/. Somente
     imagens anonimas de captcha; nao expoe dados sensiveis."""
     load_env_file()
-    n = max(1, min(int(n), 30))
+    n = max(1, min(int(n), 200))
     login_val = os.getenv("PROEIS_LOGIN", "")
     password_val = os.getenv("PROEIS_PASSWORD", "")
     gemini_key = os.getenv("GEMINI_API_KEY", "")
