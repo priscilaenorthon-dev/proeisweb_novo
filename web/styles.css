@@ -1232,3 +1232,18 @@ input[type="checkbox"] {
 /* Linhas tecnicas ([HTTP], [FORM], [CAPTCHA]...) ficam ocultas no modo
    resumido — padrao no celular; o botao Detalhes/Resumir alterna. */
 body.log-compact .log-line.log-detail { display: none; }
+
+/* ── Lista de logs (tocável no celular) ───────────────────── */
+.log-list { display: flex; flex-direction: column; gap: 8px; }
+.log-item {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 14px 14px; border-radius: 12px; border: 1px solid #1f2937;
+  background: #111827; color: #e5e7eb; cursor: pointer; text-align: left;
+  min-height: 56px; transition: background .15s, border-color .15s;
+}
+.log-item:hover, .log-item:active { background: #1b2537; border-color: #2dd4bf; }
+.log-item-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.log-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.log-item-top { font-weight: 600; font-size: .9rem; }
+.log-item-sub { color: #9ca3af; font-size: .78rem; }
+.log-item-open { color: #2dd4bf; font-weight: 700; font-size: .85rem; flex: 0 0 auto; }

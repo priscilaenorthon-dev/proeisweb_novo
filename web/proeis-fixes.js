@@ -192,33 +192,24 @@
             <p class="text-gray-600 text-sm mt-2">Execute uma listagem ou marcacao para gerar o primeiro log.</p>
           </div>
         ` : `
-          <div class="card overflow-hidden">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-gray-400 border-b border-gray-700">
-                  <th class="py-3 px-3">Data</th>
-                  <th class="py-3 px-3">Tipo</th>
-                  <th class="py-3 px-3">Status</th>
-                  <th class="py-3 px-3">ID</th>
-                  <th class="py-3 px-3 text-right">Acao</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${logs.map(log => `
-                  <tr class="border-b border-gray-800 last:border-0">
-                    <td class="py-3 px-3 text-gray-300">${safeEsc(formatLogDate(log.created_at))}</td>
-                    <td class="py-3 px-3">${safeEsc(log.kind || '-')}</td>
-                    <td class="py-3 px-3">${safeEsc(log.status || '-')}</td>
-                    <td class="py-3 px-3 font-mono text-xs text-gray-400">${safeEsc(log.op_id || '-')}</td>
-                    <td class="py-3 px-3 text-right">
-                      <button class="btn-secondary py-1 px-3" onclick="openLogDetail('${safeEsc(log.op_id)}')">Abrir</button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
+          <div class="log-list">
+            ${logs.map(log => {
+              const st = (log.status || '').toLowerCase();
+              const dot = st.includes('confirm') || st === 'ok' ? '#22c55e'
+                        : st.includes('pend') ? '#eab308'
+                        : st.includes('err') ? '#ef4444' : '#6b7280';
+              return `
+              <button type="button" class="log-item" onclick="openLogDetail('${safeEsc(log.op_id)}')">
+                <span class="log-item-dot" style="background:${dot}"></span>
+                <span class="log-item-main">
+                  <span class="log-item-top">${safeEsc(log.kind || '-')} · <span style="color:${dot}">${safeEsc(log.status || '-')}</span></span>
+                  <span class="log-item-sub">${safeEsc(formatLogDate(log.created_at))}</span>
+                </span>
+                <span class="log-item-open">Abrir ›</span>
+              </button>`;
+            }).join('')}
           </div>
-          <pre id="log-detail" class="log-box mt-4 min-h-[260px] whitespace-pre-wrap"></pre>
+          <pre id="log-detail" class="log-box mt-4 min-h-[260px] whitespace-pre-wrap hidden"></pre>
         `}
       </div>
     `;
@@ -228,7 +219,9 @@
   window.openLogDetail = async function openLogDetail(opId) {
     const box = document.getElementById('log-detail');
     if (!box || !opId) return;
+    box.classList.remove('hidden');
     box.textContent = 'Carregando log...';
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     try {
       const data = await api.get(`/api/log-content/${encodeURIComponent(opId)}`);
       box.textContent = data.content || '(log vazio)';

@@ -1015,16 +1015,17 @@ async function startRun() {
 
   if (resultsEl) {
     resultsEl.classList.remove('hidden');
+    const plural = batchConfirmed === 1 ? '' : 's';
     const defs = {
-      confirmado: { cls: 'result-ok', icon: 'OK', label: `Confirmado(s): ${batchConfirmed}/${batchTotal}` },
-      pendente: { cls: 'result-warn', icon: '...', label: `Pendente: ${batchConfirmed}/${batchTotal}` },
-      erro: { cls: 'result-err', icon: 'X', label: batchMessage ? `Erro: ${batchMessage}` : 'Erro' },
+      confirmado: { cls: 'result-ok', icon: '✅', title: batchConfirmed === 1 ? 'Vaga marcada!' : 'Vagas marcadas!', label: `${batchConfirmed} de ${batchTotal} marcada${plural}` },
+      pendente: { cls: 'result-warn', icon: '⚠️', title: batchConfirmed > 0 ? 'Marcação parcial' : 'Nenhuma vaga marcada', label: `${batchConfirmed} de ${batchTotal} marcada${plural}` },
+      erro: { cls: 'result-err', icon: '❌', title: 'Erro', label: batchMessage || 'Não foi possível marcar' },
     };
     const d = defs[batchStatus] || defs.erro;
-    const perfText = batchPerf?.total_ms ? ` - ${Math.round(batchPerf.total_ms / 1000)}s` : '';
+    const perfText = batchPerf?.total_ms ? ` · ${Math.round(batchPerf.total_ms / 1000)}s` : '';
     const el = document.createElement('div');
     el.className = `result-badge ${d.cls}`;
-    el.innerHTML = `<span>${esc(d.icon)}</span><span class="font-medium">Batch rapido</span><span class="text-gray-500 text-xs">${esc(selected.length)} evento(s)${esc(perfText)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
+    el.innerHTML = `<span>${esc(d.icon)}</span><span class="font-medium">${esc(d.title)}</span><span class="text-gray-500 text-xs">${esc(selected.length)} evento(s)${esc(perfText)}</span><span class="ml-auto text-sm">${esc(d.label)}</span>`;
     resultsEl.appendChild(el);
   }
 
