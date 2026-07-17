@@ -807,8 +807,12 @@ class ProeisHTTP:
         (captcha dificil) ou quando o modelo local esta indisponivel."""
         t0 = time.monotonic()
         try:
-            # Apos o site recusar N vezes, escala direto para o Gemini (leitura mais forte).
-            onnx_max_rejects = int(os.getenv("CAPTCHA_ONNX_MAX_REJECTS", "1"))
+            # O OCR local e GRATUITO e o site entrega uma imagem nova a cada recusa;
+            # a ~43% por tentativa, poucas tentativas ja acertam. Por isso ele cobre
+            # toda a rodada de tentativas do login/filtro. So depois de MUITAS recusas
+            # seguidas (captcha realmente dificil / modelo indisponivel) recorremos ao
+            # Gemini, que alem de custar esta com cota estourada (429 -> esperas de 62s).
+            onnx_max_rejects = int(os.getenv("CAPTCHA_ONNX_MAX_REJECTS", "999"))
             if self.consecutive_site_rejections < onnx_max_rejects:
                 onnx = self._solve_via_onnx(image)
                 if onnx is not None:
