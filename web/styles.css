@@ -970,22 +970,26 @@ input[type="checkbox"] {
     height: 34px;
   }
 
-  /* Barra de abas fixa no rodape: todos os itens visiveis, ao alcance do polegar */
+  /* Barra de abas fixa no TOPO: todos os itens visiveis, sempre no alto */
   #sidebar nav {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    top: 0;
     z-index: 40;
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     gap: 0;
-    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    padding: calc(4px + env(safe-area-inset-top)) 4px 4px;
     background: #0b1220;
-    border-top: 1px solid #1f2937;
+    border-bottom: 1px solid #1f2937;
     overflow: hidden;
   }
+
+  /* Logo redundante com a barra -> escondido; empurra o resto abaixo da barra */
+  #sidebar > div:first-child { display: none; }
+  #sidebar { padding-top: calc(58px + env(safe-area-inset-top)); }
 
   #sidebar nav .nav-item {
     flex-direction: column;
@@ -1011,9 +1015,9 @@ input[type="checkbox"] {
     white-space: nowrap;
   }
 
-  /* Conteudo nao pode ficar escondido atras da barra */
+  /* Barra agora fica no topo; conteudo respeita o indicador home embaixo */
   #main-content {
-    padding-bottom: calc(62px + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   #content > .p-6,
