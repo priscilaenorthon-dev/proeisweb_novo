@@ -1,0 +1,432 @@
+{
+ "3-pro": {
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.19,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.17,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.18,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.22,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_01_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.23,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.22,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.27,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.29,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_07_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.31,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.32,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_09_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.33,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.47,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.48,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  },
+  "cap_10_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 2.1,
+   "err": "HTTP 404: {\n  \"error\": {\n    \"code\": 404,\n    \"message\": \"This model models/gemini-3-pro-preview is no longer available. Please update your code to use a newer "
+  }
+ },
+ "3-flash": {
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.18,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.45,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.47,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_05_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.97,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.35,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 7.28,
+   "err": null
+  },
+  "cap_00_login.png": {
+   "raw": "D7736B",
+   "ans": "D7736B",
+   "s": 12.57,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 19.11,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 26.09,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF7",
+   "ans": "96BFF7",
+   "s": 35.9,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 36.51,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 45.76,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 48.35,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 50.12,
+   "err": null
+  }
+ },
+ "2.5-pro": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 4.58,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "69537F",
+   "ans": "69537F",
+   "s": 4.55,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 6.23,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "800BC0",
+   "ans": "800BC0",
+   "s": 5.76,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E78D1",
+   "ans": "4E78D1",
+   "s": 6.32,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "EAEB1D",
+   "ans": "EAEB1D",
+   "s": 5.25,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 6.45,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43FBB3",
+   "ans": "43FBB3",
+   "s": 5.58,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "088634",
+   "ans": "088634",
+   "s": 5.7,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 5.92,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BAF1",
+   "ans": "96BAF1",
+   "s": 5.94,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "5B7DEE",
+   "ans": "5B7DEE",
+   "s": 4.58,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 4.58,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 4.33,
+   "err": null
+  }
+ },
+ "3.5-flash": {
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 3.89,
+   "err": null
+  },
+  "cap_00_login.png": {
+   "raw": "D7736B",
+   "ans": "D7736B",
+   "s": 4.38,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADED",
+   "ans": "6CADED",
+   "s": 4.96,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 2.98,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 6.33,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "EAEB1D",
+   "ans": "EAEB1D",
+   "s": 3.41,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 2.8,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 4.28,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 2.84,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 3.49,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF7",
+   "ans": "96BFF7",
+   "s": 4.26,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 2.66,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 8.93,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 5.58,
+   "err": null
+  }
+ },
+ "3.1-pro": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 3.55,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 3.75,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 6.08,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 6.06,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 5.84,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.51,
+   "err": "HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on t"
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.35,
+   "err": "HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on t"
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 6.49,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 5.58,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 10.26,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 8.5,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 4.92,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF1",
+   "ans": "96BFF1",
+   "s": 7.29,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 16.89,
+   "err": null
+  }
+ }
+}

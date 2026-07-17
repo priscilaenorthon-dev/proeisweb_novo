@@ -1,0 +1,690 @@
+{
+ "2.5pro/off": {
+  "cap_10_filter.png": {
+   "raw": "96BAF1",
+   "ans": "96BAF1",
+   "s": 5.23,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 5.32,
+   "err": null
+  },
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 5.36,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 5.41,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "800BC0",
+   "ans": "800BC0",
+   "s": 5.53,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 5.56,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E78D1",
+   "ans": "4E78D1",
+   "s": 5.67,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "C95377",
+   "ans": "C95377",
+   "s": 5.68,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "EAEB1D",
+   "ans": "EAEB1D",
+   "s": 5.76,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43BB37",
+   "ans": "43BB37",
+   "s": 5.81,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 7.33,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "088634",
+   "ans": "088634",
+   "s": 7.85,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 5.33,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "E07716",
+   "ans": "E07716",
+   "s": 6.08,
+   "err": null
+  }
+ },
+ "3.1pro/off": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 3.86,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 5.3,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 5.6,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 5.6,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 6.07,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 6.0,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 5.38,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 7.96,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 9.49,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 6.35,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 9.38,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 11.92,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF1",
+   "ans": "96BFF1",
+   "s": 16.43,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 16.39,
+   "err": null
+  }
+ },
+ "3.5flash/off": {
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 3.95,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADED",
+   "ans": "6CADED",
+   "s": 4.26,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "EAEB1D",
+   "ans": "EAEB1D",
+   "s": 3.33,
+   "err": null
+  },
+  "cap_00_login.png": {
+   "raw": "D7736B",
+   "ans": "D7736B",
+   "s": 5.97,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 2.71,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 2.69,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 6.37,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 6.42,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 2.8,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 4.13,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 3.71,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF7",
+   "ans": "96BFF7",
+   "s": 3.8,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 3.1,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 7.12,
+   "err": null
+  }
+ },
+ "prolatest/off": {
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 4.3,
+   "err": null
+  },
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 8.0,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 5.61,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 5.93,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 8.21,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.48,
+   "err": "HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on t"
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 5.7,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 5.79,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 5.85,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 10.03,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 6.34,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 12.09,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF1",
+   "ans": "96BFF1",
+   "s": 15.2,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 15.98,
+   "err": null
+  }
+ },
+ "3flash/off": {
+  "cap_00_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.88,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_02_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.98,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_03_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.11,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_04_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 1.18,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_06_login.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.78,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_11_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.71,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 7.96,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "086344\n\nWait, let me re-examine the image.\nCharacters:\n1. '0' (brown outline)\n2. '8' (light blue outline)\n3. '6' (green outline)\n4. '3' (purple outline)\n5. '4' (pink outline)\nWait, is there a",
+   "ans": "086344WA1T1ETMEREEXAM1NETHE1MA6ECHARACTER510BR0WN0UT11NE28116HTB1UE0UT11NE366REEN0UT11NE43PURP1E0UT11NE54P1NK0UT11NEWA1T15THEREA",
+   "s": 8.43,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 14.26,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF7",
+   "ans": "96BFF7",
+   "s": 18.1,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 18.45,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "EAEB1D",
+   "ans": "EAEB1D",
+   "s": 28.25,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 30.16,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 45.08,
+   "err": "HTTP 503: {\n  \"error\": {\n    \"code\": 503,\n    \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try a"
+  }
+ },
+ "2.5pro/clean": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 6.74,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "800BCC",
+   "ans": "800BCC",
+   "s": 5.59,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "C85371",
+   "ans": "C85371",
+   "s": 6.58,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 6.49,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E78D9",
+   "ans": "4E78D9",
+   "s": 5.18,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 5.44,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BF4C",
+   "ans": "96BF4C",
+   "s": 4.36,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43BB31",
+   "ans": "43BB31",
+   "s": 5.12,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 5.44,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C426E0",
+   "ans": "C426E0",
+   "s": 5.99,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C63A4",
+   "ans": "0C63A4",
+   "s": 6.4,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 4.93,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "E10726",
+   "ans": "E10726",
+   "s": 6.05,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865929",
+   "ans": "865929",
+   "s": 5.55,
+   "err": null
+  }
+ },
+ "3.1pro/lines": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 5.02,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 4.41,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 7.25,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 7.09,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 6.81,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADBD",
+   "ans": "6CADBD",
+   "s": 8.66,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 9.02,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 10.59,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 8.83,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF1",
+   "ans": "96BFF1",
+   "s": 11.04,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "865909",
+   "ans": "865909",
+   "s": 8.47,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 12.67,
+   "err": null
+  },
+  "cap_03_login.png": {
+   "raw": "000BC",
+   "ans": "000BC",
+   "s": 18.19,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 15.01,
+   "err": null
+  }
+ },
+ "prolatest/up": {
+  "cap_00_login.png": {
+   "raw": "D7136B",
+   "ans": "D7136B",
+   "s": 7.07,
+   "err": null
+  },
+  "cap_04_login.png": {
+   "raw": "4E18D7",
+   "ans": "4E18D7",
+   "s": 6.15,
+   "err": null
+  },
+  "cap_05_login.png": {
+   "raw": "FAEB1D",
+   "ans": "FAEB1D",
+   "s": 5.87,
+   "err": null
+  },
+  "cap_06_login.png": {
+   "raw": "963A91",
+   "ans": "963A91",
+   "s": 5.69,
+   "err": null
+  },
+  "cap_13_filter.png": {
+   "raw": "",
+   "ans": "",
+   "s": 0.52,
+   "err": "HTTP 429: {\n  \"error\": {\n    \"code\": 429,\n    \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on t"
+  },
+  "cap_03_login.png": {
+   "raw": "0800BC",
+   "ans": "0800BC",
+   "s": 10.22,
+   "err": null
+  },
+  "cap_07_login.png": {
+   "raw": "43EBB3",
+   "ans": "43EBB3",
+   "s": 7.53,
+   "err": null
+  },
+  "cap_01_login.png": {
+   "raw": "8C9537",
+   "ans": "8C9537",
+   "s": 15.99,
+   "err": null
+  },
+  "cap_02_login.png": {
+   "raw": "6CADED",
+   "ans": "6CADED",
+   "s": 15.68,
+   "err": null
+  },
+  "cap_08_filter.png": {
+   "raw": "0C8634",
+   "ans": "0C8634",
+   "s": 9.26,
+   "err": null
+  },
+  "cap_11_filter.png": {
+   "raw": "15B7DE",
+   "ans": "15B7DE",
+   "s": 6.43,
+   "err": null
+  },
+  "cap_09_filter.png": {
+   "raw": "C24260",
+   "ans": "C24260",
+   "s": 16.29,
+   "err": null
+  },
+  "cap_12_filter.png": {
+   "raw": "EE0716",
+   "ans": "EE0716",
+   "s": 12.57,
+   "err": null
+  },
+  "cap_10_filter.png": {
+   "raw": "96BFF1",
+   "ans": "96BFF1",
+   "s": 16.62,
+   "err": null
+  }
+ }
+}
