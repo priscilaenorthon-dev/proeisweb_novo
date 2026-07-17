@@ -24,6 +24,31 @@ REAL_DIR = ROOT / "captcha_tests" / "real"
 LABELS = ROOT / "captcha_tests" / "train" / "real_labels.json"
 
 
+def augment(xb):
+    """Aumenta variedade dos captchas reais (para GENERALIZAR, nao decorar):
+    rotacao/translacao/escala + variacao de cor/brilho + ruido + oclusao."""
+    B = xb.shape[0]
+    ang = (torch.rand(B) * 2 - 1) * (8 * 3.14159 / 180)   # +-8 graus
+    tx = (torch.rand(B) * 2 - 1) * 0.06
+    ty = (torch.rand(B) * 2 - 1) * 0.08
+    sc = 1 + (torch.rand(B) * 2 - 1) * 0.08
+    cos, sin = torch.cos(ang) * sc, torch.sin(ang) * sc
+    theta = torch.zeros(B, 2, 3)
+    theta[:, 0, 0] = cos;  theta[:, 0, 1] = -sin; theta[:, 0, 2] = tx
+    theta[:, 1, 0] = sin;  theta[:, 1, 1] = cos;  theta[:, 1, 2] = ty
+    grid = F.affine_grid(theta, xb.shape, align_corners=False)
+    xb = F.grid_sample(xb, grid, padding_mode="border", align_corners=False)
+    xb = xb * (0.85 + 0.3 * torch.rand(B, 3, 1, 1))        # cor por canal
+    xb = xb + (torch.rand(B, 1, 1, 1) * 2 - 1) * 0.05       # brilho
+    xb = xb + torch.randn_like(xb) * 0.03                   # ruido
+    xb = xb.clamp(0, 1)
+    if torch.rand(1).item() < 0.5:                          # oclusao (bolinha/linha)
+        h = int(torch.randint(6, 18, (1,)).item()); w = int(torch.randint(8, 26, (1,)).item())
+        y = int(torch.randint(0, IH - h, (1,)).item()); x = int(torch.randint(0, IW - w, (1,)).item())
+        xb[:, :, y:y + h, x:x + w] = 1.0
+    return xb
+
+
 def load_labeled_real():
     d = json.load(open(LABELS))
     items = [(REAL_DIR / fn, lab) for fn, lab in d.items()
@@ -75,7 +100,8 @@ def main():
         # cada época: reais (repetidos) + um pouco de sintético fresco para regularizar
         for i in range(0, nrt, bs):
             b = order[i:i+bs]
-            out = model(Xrt[b]); loss = sum(F.cross_entropy(out[:, k, :], Yrt[b][:, k]) for k in range(6)) / 6
+            xb = augment(Xrt[b])   # cada época vê variações diferentes -> generaliza
+            out = model(xb); loss = sum(F.cross_entropy(out[:, k, :], Yrt[b][:, k]) for k in range(6)) / 6
             opt.zero_grad(); loss.backward(); opt.step(); L.append(loss.item())
         rv_e, rv_c = accuracy(model, Xrv, Yrv)
         g_e, g_c = accuracy(model, Xgold, Ygold)
