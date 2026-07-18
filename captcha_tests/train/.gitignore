@@ -4,6 +4,8 @@ real_labels.json
 *.pt
 *.onnx
 *_log.txt
+*log*.txt
+retrain_log*.txt
 # O modelo servido em producao PRECISA ir para o container (excecoes ao *.onnx acima):
 !model.onnx
 !model.onnx.data
