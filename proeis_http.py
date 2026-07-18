@@ -487,6 +487,10 @@ class ProeisHTTP:
         self._pending_captcha: dict | None = None
         self.captcha_samples: list[dict] = []
         self.last_solver: str | None = None
+        # Registro de todas as vagas que apareceram na operacao (para conferencia
+        # posterior de nome/endereco no log do Executar). Deduplicado.
+        self.seen_vaga_labels: list[tuple[str, str]] = []
+        self._seen_vaga_set: set[str] = set()
         _op_start()
         _model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite") if gemini_api_key else "nenhum"
         _log("INFO", f"Solver ativo: {_model}")
@@ -541,9 +545,13 @@ class ProeisHTTP:
 
     def request(self, method: str, url: str, **kwargs) -> BeautifulSoup:
         last_error: Exception | None = None
-        max_attempts = int(os.getenv("PROEIS_HTTP_ATTEMPTS", "2"))
-        connect_timeout = int(os.getenv("PROEIS_CONNECT_TIMEOUT", "8"))
-        read_timeout = int(os.getenv("PROEIS_READ_TIMEOUT", "25"))
+        # Fail-fast: as 6h o site do PROEIS fica sobrecarregado e trava 60s+. O site
+        # normalmente responde em ~40ms, entao timeouts curtos + mais tentativas fazem
+        # o bot abandonar conexoes penduradas rapido e re-tentar, em vez de gastar todo
+        # o tempo esperando. (Ajustavel por env se precisar.)
+        max_attempts = int(os.getenv("PROEIS_HTTP_ATTEMPTS", "4"))
+        connect_timeout = int(os.getenv("PROEIS_CONNECT_TIMEOUT", "5"))
+        read_timeout = int(os.getenv("PROEIS_READ_TIMEOUT", "12"))
         short_url = url.split("/")[-1] or url
         for attempt in range(1, max_attempts + 1):
             t0 = time.monotonic()
@@ -1954,6 +1962,11 @@ class ProeisHTTP:
 
         # Carrega todos os candidatos uma unica vez; evita parse duplo da mesma pagina
         all_candidates = self.available_candidates(soup, "qualquer")
+        # Guarda todas as vagas que apareceram (deduplicado) para conferencia no log.
+        for _c in all_candidates:
+            if _c.label not in self._seen_vaga_set:
+                self._seen_vaga_set.add(_c.label)
+                self.seen_vaga_labels.append((data_evento, _c.label))
         candidates = (
             [c for c in all_candidates if self.matches_preference(norm(c.label), prefer_norm)]
             if should_try_fallback
@@ -2932,6 +2945,16 @@ def run_batch_events(
             f"data='{event['data_evento']}' hora='{event['hora_evento']}' nome='{event['nome_evento']}'{detail}",
         )
     _log("INFO", f"Marcacao agrupada finalizada. Confirmadas: {confirmed_total}/{len(events)}. Sem Eu Vou: {no_action_total}. Pendentes nao marcados: {len(pending)}.")
+    # Registro para conferencia posterior: TODAS as vagas que o site exibiu nesta
+    # operacao (nome/endereco), para o usuario checar se errou algum cadastro.
+    if client.seen_vaga_labels:
+        _log("INFO", f"=== Vagas disponiveis nesta operacao ({len(client.seen_vaga_labels)}) — confira nome/endereco ===")
+        for _data, _label in client.seen_vaga_labels[:80]:
+            _log("INFO", f"  [{_data or 'sem data'}] {_label[:240]}")
+        if len(client.seen_vaga_labels) > 80:
+            _log("INFO", f"  ... (+{len(client.seen_vaga_labels)-80} vagas; lista truncada)")
+    else:
+        _log("INFO", "Nenhuma vaga apareceu no site durante esta operacao (nada para conferir).")
     return confirmed_total
 
 
