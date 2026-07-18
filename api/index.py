@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -336,7 +336,12 @@ def _save_captcha_samples(client: ProeisHTTP) -> None:
         return
     try:
         col = _captcha_collection()
-        now = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        # expire_at: TTL nativo do Firestore apaga o doc sozinho apos N dias. Os
+        # captchas verificados ja sao salvos no GCS no retreino semanal, entao nada
+        # de treino se perde. (Timestamp -> ativa a politica de TTL do Firestore.)
+        expire_at = now_dt + timedelta(days=int(os.getenv("CAPTCHA_TTL_DAYS", "60")))
         batch = _firestore_db().batch()
         for i, s in enumerate(samples[:500]):
             doc = col.document()
@@ -347,6 +352,7 @@ def _save_captcha_samples(client: ProeisHTTP) -> None:
                 "model": s.get("model", ""),
                 "preproc": s.get("preproc", ""),
                 "created_at": now,
+                "expire_at": expire_at,
             })
             if (i + 1) % 400 == 0:
                 batch.commit(); batch = _firestore_db().batch()
@@ -490,6 +496,7 @@ def _save_operation_log(
 ) -> None:
     try:
         content = "\n".join(lines[-2000:])
+        now_dt = datetime.now(timezone.utc)
         _logs_collection().document(op_id).set({
             "op_id": op_id,
             "kind": kind,
@@ -498,22 +505,36 @@ def _save_operation_log(
             "content": content,
             "line_count": len(lines),
             "size_kb": round(len(content.encode("utf-8")) / 1024, 1),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": now_dt.isoformat(),
+            # TTL nativo: log antigo se apaga sozinho apos N dias.
+            "expire_at": now_dt + timedelta(days=int(os.getenv("LOG_TTL_DAYS", "30"))),
             "result": {k: v for k, v in result.items() if isinstance(v, (str, int, float, bool)) or v is None},
         })
     except Exception:
         pass
 
 def _firestore_logs() -> list[dict[str, Any]]:
+    # Le apenas os ultimos _LOGS_LIMIT no servidor (order_by + limit), em vez de
+    # baixar a colecao inteira e ordenar em Python. Custo constante conforme cresce.
     try:
         logs = []
-        for doc in _logs_collection().stream():
+        query = _logs_collection().order_by("created_at", direction="DESCENDING").limit(_LOGS_LIMIT)
+        for doc in query.stream():
             data = doc.to_dict() or {}
             data.setdefault("op_id", doc.id)
             logs.append(data)
-        return sorted(logs, key=lambda item: item.get("created_at", ""), reverse=True)[:_LOGS_LIMIT]
+        return logs
     except Exception:
-        return []
+        # Fallback defensivo (ex.: indice ausente): volta ao modo antigo limitado.
+        try:
+            logs = []
+            for doc in _logs_collection().stream():
+                data = doc.to_dict() or {}
+                data.setdefault("op_id", doc.id)
+                logs.append(data)
+            return sorted(logs, key=lambda item: item.get("created_at", ""), reverse=True)[:_LOGS_LIMIT]
+        except Exception:
+            return []
 
 class TestLoginRequest(BaseModel):
     login: str = ""
@@ -1474,11 +1495,26 @@ def captcha_dataset_stats():
     """Estatisticas do dataset de captchas coletado do uso real (site = rotulador).
     Mostra quantas amostras temos e a taxa de acerto por modelo — base para
     medir melhorias e treinar um solver proprio."""
+    # Total exato via agregacao (o servidor conta sem baixar doc a doc — custo baixo).
+    total_exact = None
     try:
-        docs = list(_captcha_collection().select(["accepted", "model"]).stream())
+        total_exact = int(_captcha_collection().count().get()[0][0].value)
+    except Exception:
+        total_exact = None
+    # Acuracia/por-modelo a partir de uma AMOSTRA recente limitada (custo constante,
+    # nao cresce com a colecao). Evita ler a colecao inteira a cada chamada.
+    sample_n = int(os.getenv("CAPTCHA_STATS_SAMPLE", "3000"))
+    try:
+        docs = list(
+            _captcha_collection()
+            .select(["accepted", "model", "created_at"])
+            .order_by("created_at", direction="DESCENDING")
+            .limit(sample_n)
+            .stream()
+        )
     except Exception as exc:
-        return {"ok": False, "message": str(exc), "total": 0}
-    total = len(docs)
+        return {"ok": False, "message": str(exc), "total": total_exact or 0}
+    sample = len(docs)
     accepted = 0
     by_model: dict[str, dict[str, int]] = {}
     for d in docs:
@@ -1493,9 +1529,10 @@ def captcha_dataset_stats():
         st["accuracy_pct"] = round(st["accepted"] / max(1, st["total"]) * 100, 1)
     return {
         "ok": True,
-        "total": total,
+        "total": total_exact if total_exact is not None else sample,
+        "sample": sample,
         "accepted": accepted,
-        "accuracy_pct": round(accepted / max(1, total) * 100, 1),
+        "accuracy_pct": round(accepted / max(1, sample) * 100, 1),
         "by_model": by_model,
     }
 
