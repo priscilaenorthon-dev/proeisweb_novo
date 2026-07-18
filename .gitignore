@@ -21,3 +21,4 @@ config/batch_events_runtime.json
 # Vercel
 .vercel/
 captcha_tests/real/
+*.tar.gz

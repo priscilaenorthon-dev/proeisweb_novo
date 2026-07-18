@@ -13,3 +13,8 @@ config/local_settings.json
 config/batch_events_runtime.json
 
 .vercel
+
+*.tar.gz
+captcha_tests/real/
+docs/
+*.md
