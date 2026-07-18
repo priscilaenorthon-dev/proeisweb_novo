@@ -215,6 +215,27 @@ _warmup_lock = threading.Lock()
 _warmup_in_progress = False
 _warmup_event = threading.Event()
 _warmup_event.set()  # começa "livre" (nenhum warmup em andamento)
+
+# Cadeado da conta PROEIS: o site so aceita 1 sessao ativa por conta. Enquanto uma
+# operacao (Executar/Listar/Servicos) esta usando a conta, NAO deixamos o login
+# automatico (warmup) rodar em paralelo — senao ele derruba a sessao da operacao e
+# ela quebra ("erro"). Servico roda com max-instances=1, entao este guard em memoria
+# e suficiente.
+_account_lock = threading.Lock()
+_account_busy = 0
+
+def _account_enter() -> None:
+    global _account_busy
+    with _account_lock:
+        _account_busy += 1
+
+def _account_exit() -> None:
+    global _account_busy
+    with _account_lock:
+        _account_busy = max(0, _account_busy - 1)
+
+def _account_is_busy() -> bool:
+    return _account_busy > 0
 _LOGS_DIR = ROOT / "logs"
 _SSE_PADDING = ":" + (" " * 2048) + "\n\n"
 _LOGS_LIMIT = 200
@@ -764,6 +785,7 @@ async def run_automation(body: RunRequest):
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
         _thread_local.capture = cap
+        _account_enter()  # segura a conta (bloqueia login automatico paralelo) ate o finally
         try:
             print(f"[OP] Operacao iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_evento}")
             print(
@@ -821,6 +843,7 @@ async def run_automation(body: RunRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
+            _account_exit()  # libera a conta
             print(f"[OP] Operacao encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "run", result["status"], log_lines, log_path.name, result)
             _thread_local.capture = None
@@ -995,6 +1018,7 @@ async def run_batch_fast(body: BatchRunRequest):
         cap = _Capture(emit, log_file, log_lines)
         _thread_local.capture = cap
         t_total = time.monotonic()
+        _account_enter()  # segura a conta (bloqueia login automatico paralelo) ate o finally
         try:
             if not body.events:
                 raise AutomationError("Nenhum evento informado para execucao em lote.")
@@ -1070,6 +1094,7 @@ async def run_batch_fast(body: BatchRunRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
+            _account_exit()  # libera a conta
             # Cada passo do encerramento e isolado: se um falhar, os demais rodam
             # e o emit(None) SEMPRE acontece — sem ele o batch nunca e marcado
             # como terminado e a trava de batch unico ficaria presa para sempre.
@@ -1126,6 +1151,7 @@ async def list_vagas(body: ListVagasRequest):
         log_lines: list[str] = []
         cap = _Capture(emit, log_file, log_lines)
         _thread_local.capture = cap
+        _account_enter()  # segura a conta (bloqueia login automatico paralelo) ate o finally
         try:
             print(f"[OP] Listagem iniciada: id={op_id} | convenio={body.convenio} | cpa={body.cpa} | data={body.data_especifica or 'todas'}")
             if not login_val:
@@ -1196,6 +1222,7 @@ async def list_vagas(body: ListVagasRequest):
             result["status"] = "erro"
             result["message"] = f"{type(exc).__name__}: {exc}"
         finally:
+            _account_exit()  # libera a conta
             print(f"[OP] Listagem encerrada: status={result['status']} | log={log_path.name}")
             _save_operation_log(op_id, "listar", result["status"], log_lines, log_path.name, result)
             _thread_local.capture = None
@@ -1320,6 +1347,9 @@ def _trigger_warmup_login() -> None:
     password_val = os.getenv("PROEIS_PASSWORD", "")
     gemini_key = os.getenv("GEMINI_API_KEY", "")
     if not (login_val and password_val and gemini_key):
+        return
+    # Nao logar em paralelo se uma operacao esta usando a conta (derrubaria a sessao dela).
+    if _account_is_busy():
         return
     with _warmup_lock:
         if _warmup_in_progress:

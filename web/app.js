@@ -594,15 +594,25 @@ async function renderRunPage() {
               </label>
             </div>
             <div class="space-y-2">
-              ${events.map((ev, i) => `
-                <label class="flex items-start gap-2 cursor-pointer select-none">
+              ${events.map((ev, i) => {
+                const nome = esc(ev.nome_evento || ev.convenio || '—');
+                const data = esc(formatDatePreview(ev.data_evento, 'Próxima data'));
+                const hora = ev.hora_evento ? ' · ' + esc(ev.hora_evento) : '';
+                const reserva = ev.disponivel === 'reserva';
+                const tipo = reserva ? 'Reserva' : 'Titular';
+                const tipoCls = reserva ? 'text-orange-400' : 'text-teal-400';
+                const endereco = ev.endereco ? esc(ev.endereco) : '';
+                return `
+                <label class="flex items-start gap-2 cursor-pointer select-none py-1">
                   <input type="checkbox" class="ev-cb mt-0.5" data-i="${i}" checked>
-                  <div class="text-sm min-w-0">
-                    <div class="text-gray-200 truncate font-medium">${esc(ev.convenio || '—')}</div>
-                    <div class="text-gray-500 text-xs truncate">${esc(formatDatePreview(ev.data_evento, 'Próxima data'))} · ${esc(ev.cpa || '—')}</div>
+                  <div class="text-sm min-w-0 flex-1">
+                    <div class="text-gray-100 truncate font-semibold">${nome}</div>
+                    <div class="text-xs truncate"><span class="text-gray-400">${data}${hora}</span> · <span class="${tipoCls} font-medium">${tipo}</span></div>
+                    <div class="text-gray-500 text-xs truncate">${esc(ev.convenio || '')} · ${esc(ev.cpa || '')}</div>
+                    ${endereco ? `<div class="text-gray-600 text-xs truncate">📍 ${endereco}</div>` : ''}
                   </div>
-                </label>
-              `).join('')}
+                </label>`;
+              }).join('')}
             </div>
           </div>
           <button id="run-btn" onclick="startRun()" class="btn-primary w-full">▶ Executar</button>
