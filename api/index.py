@@ -1157,8 +1157,19 @@ async def list_vagas(body: ListVagasRequest):
                 total = client.list_all_available_dates(body.convenio, body.cpa)
 
             _resave_current_session(client)
-            _save_captcha_samples(client)
             result["total"] = total
+
+            # Coleta extra de captchas verificados para treinar a IA. Roda DEPOIS de as
+            # vagas ja terem sido exibidas ao vivo, entao nao atrasa o resultado. Barato:
+            # nao exige CPU sempre-ligada (roda dentro do request). Best-effort, nunca quebra.
+            try:
+                n_harvest = int(os.getenv("CAPTCHA_HARVEST_AFTER_LISTING", "20"))
+                if n_harvest > 0 and body.convenio and body.cpa:
+                    client.harvest_captchas(body.convenio, body.cpa, n_harvest)
+            except Exception as exc:
+                print(f"[COLETA] Coleta pos-listagem ignorada: {exc}")
+
+            _save_captcha_samples(client)
 
         except AutomationError as exc:
             result["status"] = "erro"

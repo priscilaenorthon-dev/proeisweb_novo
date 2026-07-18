@@ -1607,6 +1607,63 @@ class ProeisHTTP:
         print(f"[VAGAS] Varredura concluida: {total} vaga(s) encontrada(s) no total.")
         return total
 
+    def harvest_captchas(self, convenio: str, cpa: str, target: int = 20) -> tuple[int, int]:
+        """Coleta ~target captchas verificados pelo site, repetindo a consulta de
+        disponibilidade (cada consulta = 1 captcha novo + veredito do site: aceito/recusado).
+        O site funciona como rotulador gratuito -> vira dataset de treino da nossa IA.
+        Reaproveita exatamente o fluxo de listagem ja comprovado. Robusto: nunca lanca;
+        retorna (aceitos, total_coletado)."""
+        accepted = 0
+        done = 0
+        _log("COLETA", f"Coletando ~{target} captchas para treinar a IA (nao afeta as vagas acima)...")
+        try:
+            while done < target:
+                # Volta ao formulario de filtro e re-seleciona o convenio (mesma transicao
+                # que a varredura usa entre datas) -> garante captcha novo a cada iteracao.
+                self.navigate_to_service_page()
+                soup = self.require_soup()
+                fields = self.find_fields(soup)
+                payload = self.form_payload(soup)
+                self.set_field(payload, fields, "convenio", convenio)
+                payload["__EVENTTARGET"] = fields["convenio"]
+                payload["__EVENTARGUMENT"] = ""
+                soup = self.post_form(payload)
+
+                dates = self.available_date_options(soup)
+                if not dates:
+                    _log("COLETA", "Sem datas disponiveis; encerrando coleta.")
+                    break
+                if not self.find_captcha_field(soup):
+                    _log("COLETA", "Sem campo de captcha na pagina; encerrando coleta.")
+                    break
+                value, _label = dates[0]
+
+                payload = self.form_payload(soup)
+                fields = self.find_fields(soup)
+                payload[fields["data"]] = value
+                self.set_field(payload, fields, "cpa", cpa)
+                self.fill_page_captcha(soup, payload)
+                self.set_reserva_checkbox(soup, payload, False)
+                submit = self.find_submit(soup, ("pesquisar", "buscar", "consultar", "filtrar", "listar", "avancar"))
+                if submit:
+                    payload[submit] = self.input_value(soup, submit)
+                result_soup = self.post_form(payload)
+                done += 1
+
+                if "erro ao confirmar imagem" in norm(str(result_soup)):
+                    self.report_bad_captcha()
+                else:
+                    self.report_good_captcha()
+                    accepted += 1
+
+                if done % 10 == 0:
+                    _log("COLETA", f"  {done}/{target} coletados ({accepted} aceitos pelo site)...")
+                time.sleep(float(os.getenv("CAPTCHA_HARVEST_DELAY", "0.2")))
+        except Exception as exc:  # noqa: BLE001 — coleta e best-effort, nunca quebra a operacao
+            _log("COLETA", f"Coleta encerrada ({str(exc)[:80]}).")
+        _log("COLETA", f"Coleta finalizada: {done} captchas ({accepted} aceitos) guardados para treino.")
+        return accepted, done
+
     def available_date_options(self, soup: BeautifulSoup) -> list[tuple[str, str]]:
         fields = self.find_fields(soup)
         date_field = fields.get("data")
