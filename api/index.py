@@ -1437,6 +1437,11 @@ def session_keepalive_web(body: TestLoginRequest):
     if not login_val or not password_val or not gemini_key:
         return {"ok": False, "status": "sem_credenciais"}
 
+    # Se uma operacao esta usando a conta, ela ja mantem a sessao viva. Nao mexer
+    # (um login de keepalive aqui derrubaria a sessao da operacao — regra 1-sessao do PROEIS).
+    if _account_is_busy():
+        return {"ok": True, "status": "ocupada"}
+
     try:
         with _env_lock:
             _apply_runtime_options(body)
