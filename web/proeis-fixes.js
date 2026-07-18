@@ -141,7 +141,6 @@
       data_evento: vaga.data || '',
       hora_evento: horaFormatted,
       disponivel: vaga.tipo === 'reserva' ? 'reserva' : 'nao-reserva',
-      quantidade: 1,
       nome_evento: stripVagaSuffix(vaga.nome || parsed.nome),
       turno: '',
       endereco: cleanEndereco(vaga.endereco || parsed.endereco),

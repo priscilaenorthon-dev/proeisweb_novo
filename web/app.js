@@ -290,7 +290,6 @@ function expandEventForRun(ev) {
         ...ev,
         data_evento,
         hora_evento,
-        quantidade: 1,
         scan_rounds: 1,
         turno: '',
       });
@@ -528,7 +527,6 @@ async function openEventModal(index, prefill = null, afterSave = null) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const data = Object.fromEntries(fd.entries());
-    data.quantidade = 1;
     data.scan_rounds = 1;
     data.turno = '';
     try {
@@ -1122,7 +1120,6 @@ function vagaParaEvento(idx) {
     data_evento: vaga.data     || '',
     hora_evento: horaFormatted,
     disponivel:  vaga.tipo === 'reserva' ? 'reserva' : 'nao-reserva',
-    quantidade:  1,
     nome_evento: nomeEvento,
     turno:       '',
     endereco:    endEvento,

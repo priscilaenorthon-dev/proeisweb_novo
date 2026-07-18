@@ -58,7 +58,6 @@ class RunRequest(BaseModel):
     data_evento: str = ""
     cpa: str = ""
     disponivel: str = "nao-reserva"
-    quantidade: int = 1
     nome_evento: str = ""
     hora_evento: str = ""
     turno: str = ""
@@ -460,7 +459,6 @@ def _resave_current_session(client: ProeisHTTP) -> None:
 def _event_payload(body: RunRequest) -> dict[str, Any]:
     _clean_request_text(body)
     data = body.model_dump()
-    data["quantidade"] = int(data.get("quantidade") or 1)
     data["scan_rounds"] = int(data.get("scan_rounds") or 1)
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     return data
@@ -468,7 +466,6 @@ def _event_payload(body: RunRequest) -> dict[str, Any]:
 def _batch_event_payload(event: RunRequest) -> dict[str, Any]:
     _clean_request_text(event)
     data = event.model_dump()
-    data["quantidade"] = max(1, int(data.get("quantidade") or 1))
     data["scan_rounds"] = max(1, int(data.get("scan_rounds") or 1))
     for key in ("convenio", "data_evento", "cpa", "disponivel", "nome_evento", "hora_evento", "turno", "endereco"):
         data[key] = _clean_text(data.get(key, ""))
@@ -783,7 +780,7 @@ async def run_automation(body: RunRequest):
                 body.convenio,
                 body.cpa,
                 body.disponivel,
-                body.quantidade,
+                1,  # sempre 1 vaga por evento
                 scan_rounds=body.scan_rounds,
                 start_date=body.data_evento,
                 nome_evento=body.nome_evento,
@@ -793,7 +790,7 @@ async def run_automation(body: RunRequest):
             )
             _resave_current_session(client)
             _save_captcha_samples(client)
-            result["status"] = "confirmado" if confirmed >= body.quantidade else "pendente"
+            result["status"] = "confirmado" if confirmed >= 1 else "pendente"
             result["confirmed"] = confirmed
 
         except AutomationError as exc:

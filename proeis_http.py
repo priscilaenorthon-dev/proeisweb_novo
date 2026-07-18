@@ -2836,7 +2836,7 @@ def run_batch_events(
         next_pending: list[tuple[int, dict[str, Any]]] = []
         for index, event in pending:
             nome = event.get("nome_evento", "")
-            quantidade = int(event.get("quantidade", 1))
+            quantidade = 1  # sempre 1 vaga por evento
             event_attempts[index] = event_attempts.get(index, 0) + 1
 
             if confirmed_per_event.get(index, 0) >= quantidade:
@@ -2958,7 +2958,7 @@ def run_batch_events_independent(
 ) -> int:
     _log("INFO", f"=== FASE 2: Marcacao independente ({len(events)} evento(s)) ===")
     confirmed_total = 0
-    expected_total = sum(max(1, int(event.get("quantidade", 1))) for event in events)
+    expected_total = len(events)  # sempre 1 vaga por evento
 
     for index, event in enumerate(events, 1):
         if index > 1:
