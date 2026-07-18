@@ -944,8 +944,12 @@ async function startRun() {
     ...settingsToBody(settings),
     events: selected,
     fast_mode: true,
-    batch_window_seconds: 0,
+    // Modo persistente ("nao perder titular"): fica em rodizio entre os eventos por
+    // ~150s, re-checando ate a vaga abrir. batch_max_no_action_rounds=0 => nao desiste
+    // enquanto a janela durar. Encerra na hora em que tudo for marcado (sem atraso).
+    batch_window_seconds: 150,
     batch_repeat_pause_seconds: 1,
+    batch_max_no_action_rounds: 0,
   };
 
   let batchStatus = 'erro';
