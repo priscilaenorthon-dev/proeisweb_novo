@@ -1968,21 +1968,10 @@ class ProeisHTTP:
             if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
         ]
 
+        # TITULAR-ONLY: sem plano B. Se o evento e titular (nao-reserva) e nao ha
+        # nenhuma vaga titular, NAO caimos para reserva — preferimos ficar sem vaga.
         if not filtered and should_try_fallback:
-            any_filtered = [
-                candidate
-                for candidate in all_candidates
-                if self.event_matches(candidate.label, nome_evento, hora_evento, turno, endereco)
-            ]
-            if any_filtered:
-                _log(
-                    "VAGA",
-                    "Fallback de disponibilidade: nao encontrei linha exata em 'nao-reserva'; "
-                    "continuando com candidatos de 'qualquer' para nao perder vaga compativel.",
-                )
-                candidates = all_candidates
-                filtered = any_filtered
-                prefer_used = "qualquer"
+            _log("VAGA", "Somente titular: nenhuma vaga titular disponivel para este evento; nao vou marcar reserva.")
 
         filtered = sorted(
             filtered,
