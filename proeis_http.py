@@ -2058,6 +2058,12 @@ class ProeisHTTP:
         else:
             soup = self.request("GET", chosen.action)
         success = self.confirm_if_needed(soup)
+        if not success and nome_evento:
+            # O site as vezes marca (reserva) e volta sem a frase de sucesso. Confere
+            # na lista de marcados: se a vaga entrou, e sucesso (evita retry a toa).
+            if self.verify_marking_in_menu(nome_evento, data_evento, hora_evento):
+                _log("VAGA", "Marcacao confirmada pela lista de marcados (site nao exibiu frase de sucesso).")
+                success = True
         if success:
             self.report_good_captcha()
             emit_vaga(chosen.label, data_evento=data_evento, acao="Clicado Eu vou")
@@ -2326,6 +2332,36 @@ class ProeisHTTP:
         else:
             _log("VAGA", "Confirmacao de sucesso NAO encontrada na resposta do site.")
         return success
+
+    def verify_marking_in_menu(self, nome_evento: str, data_evento: str = "", hora_evento: str = "") -> bool:
+        """Confere na lista de marcados (menu #txtEveVoluntario) se a vaga entrou de fato.
+        Usado quando o site marca (ex.: RESERVA) mas volta para a tela de filtros SEM a
+        frase de sucesso — evitando falso negativo + retry desnecessario. So confirma
+        positivamente (nunca inventa sucesso): exige nome + data presentes na lista."""
+        nome_n = norm(nome_evento)
+        if not nome_n:
+            return False
+        try:
+            soup = self.request("GET", MENU_URL)
+            ta = soup.select_one("#txtEveVoluntario")
+            marked = norm(ta.get_text(" ", strip=True)) if ta else ""
+            if not marked or nome_n not in marked:
+                return False
+            cands: set[str] = set()
+            d = (data_evento or "").strip()
+            if d:
+                cands.add(norm(d))
+                m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", d)
+                if m:
+                    cands.add(f"{m.group(3)}/{m.group(2)}/{m.group(1)}")
+                m2 = re.match(r"^(\d{2})/(\d{2})/(\d{4})", d)
+                if m2:
+                    cands.add(f"{m2.group(3)}-{m2.group(2)}-{m2.group(1)}")
+            if not cands:
+                return True  # nome confere e nao ha data para discriminar
+            return any(c in marked for c in cands)
+        except Exception:
+            return False
 
 
 # â"€â"€ Helpers globais â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
