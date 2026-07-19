@@ -424,22 +424,72 @@
   };
 
   window.renderHelpPage = async function renderHelpPageV2() {
+    const acc = (icon, title, body) => `
+      <details class="mb-2 rounded-xl border border-gray-700 bg-gray-800/40 overflow-hidden group">
+        <summary class="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3 text-white font-semibold hover:bg-gray-800/70">
+          <span class="flex items-center gap-2 min-w-0"><span class="text-lg shrink-0">${icon}</span><span class="truncate">${title}</span></span>
+          <span class="text-gray-500 shrink-0 transition-transform duration-200 group-open:rotate-180">&#9662;</span>
+        </summary>
+        <div class="px-4 pb-4 pt-1 text-sm text-gray-300 leading-relaxed space-y-2">${body}</div>
+      </details>`;
     document.getElementById('content').innerHTML = `
-      <div class="p-6 max-w-5xl">
-        <div class="mb-6">
-          <h2 class="text-2xl font-bold text-white">Como usar</h2>
-          <p class="text-gray-400 text-sm mt-1">Fluxo recomendado para listar, cadastrar, executar, agendar e verificar logs.</p>
+      <div class="p-5 md:p-6 max-w-3xl mx-auto pb-16">
+        <div class="mb-5">
+          <h2 class="text-2xl font-bold text-white">Ajuda &amp; Como usar</h2>
+          <p class="text-gray-400 text-sm mt-1">Toque em cada tópico para abrir. Tudo o que o sistema faz por você.</p>
+          <div class="mt-2 inline-flex items-center gap-2 text-xs bg-teal-500/15 text-teal-300 border border-teal-600/40 rounded-full px-3 py-1">
+            <span class="w-2 h-2 rounded-full bg-teal-400"></span> IA de captcha própria &middot; ~75% de acerto &middot; sem custo
+          </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">1. Configure o acesso</h3><p class="text-sm text-gray-400">Use Configuracoes para credenciais locais ou deixe em branco quando elas ja estiverem no servidor. Clique em Testar API para validar login e Gemini.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">2. Liste vagas antes de cadastrar</h3><p class="text-sm text-gray-400">Em Listar Vagas, selecione convenio/CPA e opcionalmente a data. O log mostra o processo ao vivo e a tabela permite adicionar a vaga pelo botao +.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">3. Confira evento, hora e endereco</h3><p class="text-sm text-gray-400">Ao clicar no +, o sistema preenche nome, data, hora, tipo e endereco. Se hora/endereco ficarem vazios, o robo aceita qualquer horario/endereco que bata com nome, data e tipo.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">4. Execute manualmente</h3><p class="text-sm text-gray-400">Em Executar, selecione os eventos. O resultado aparece no topo e o log ao vivo mostra filtros, captcha, candidato escolhido e confirmacao.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">5. Agendamento da tela</h3><p class="text-sm text-gray-400">Agendar Automacao na tela usa o navegador. Funciona se a aba ficar aberta ate o horario. Se o horario ja passou, agenda para o dia seguinte.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">6. Cloud Scheduler</h3><p class="text-sm text-gray-400">O Cloud Scheduler do Google roda no servidor, independente do navegador. Ele busca eventos salvos no Firestore e executa conforme a configuracao do Google Cloud.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">7. Consulte logs</h3><p class="text-sm text-gray-400">A tela Logs mostra execucoes recentes salvas no Firestore. Use para ver se marcou, qual vaga escolheu, erros de captcha e mensagens finais.</p></div>
-          <div class="help-step"><h3 class="font-semibold text-white mb-2">8. Ajuste avancado com cuidado</h3><p class="text-sm text-gray-400">As opcoes avancadas funcionam. Use Padrao para voltar aos valores estaveis. Aumente tentativas/timeouts so se houver instabilidade no PROEIS ou captcha.</p></div>
+
+        <div class="rounded-xl border border-teal-600/40 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 p-4 mb-5">
+          <h3 class="text-white font-bold flex items-center gap-2">🌅 Receita para pegar vaga às 6h</h3>
+          <ol class="mt-2 text-sm text-gray-200 space-y-1.5 list-decimal list-inside">
+            <li><b>Na véspera:</b> cadastre os eventos em <b>Eventos</b> com a <b>data e hora certas</b> (evita varredura, fica mais rápido).</li>
+            <li><b>Uns 5 min antes das 6h:</b> abra o app — ele <b>já loga sozinho</b>.</li>
+            <li>Vá em <b>Executar</b> e <b>selecione</b> os eventos do dia.</li>
+            <li><b>Toque em Executar ~20–30s ANTES das 6h00.</b> O robô fica martelando e fisga a titular no instante que abre.</li>
+            <li>Deixe o <b>app aberto e na tela</b> até terminar.</li>
+          </ol>
         </div>
+
+        <h3 class="text-gray-400 text-xs uppercase tracking-wide font-semibold mb-2 mt-4">Telas do app</h3>
+        ${acc('🔍', 'Vagas — listar o que está aberto', `
+          <p>Escolha <b>convênio</b> e <b>CPA</b> e toque em <b>Listar vagas</b>. Deixe a data em branco para varrer todos os dias, ou informe uma data.</p>
+          <p>Ele mostra <b>tudo que está disponível</b> (titular e reserva). Toque no <b>+</b> de uma vaga para já criar o evento com nome, data, hora, tipo e endereço preenchidos.</p>`)}
+        ${acc('📋', 'Eventos — cadastrar (Titular ou Reserva)', `
+          <p>Cada evento tem um botão <b>Titular</b> / <b>Reserva</b> — <b>você escolhe</b>.</p>
+          <ul class="list-disc list-inside space-y-1">
+            <li><b>Titular:</b> pega só vaga titular; <b>nunca</b> marca reserva no lugar.</li>
+            <li><b>Reserva:</b> pega vaga de reserva (lista de espera).</li>
+          </ul>
+          <p>Coloque a <b>data e hora certas</b> para o robô ir direto (mais rápido). Sem data, ele varre os dias disponíveis.</p>`)}
+        ${acc('▶️', 'Executar — marcar as vagas', `
+          <p>Selecione os eventos e toque em <b>Executar</b>. Cada card mostra o <b>nome</b>, data/hora, tipo e endereço, para você diferenciar.</p>
+          <p>Ele marca <b>um de cada vez</b>. O log ao vivo mostra filtros, captcha e a confirmação. Quando termina, aparece o resultado e a <b>lista das vagas que apareceram no dia</b> (para você conferir nome/endereço).</p>`)}
+        ${acc('🧾', 'Logs — conferir o que aconteceu', `
+          <p>Mostra as execuções recentes. Toque em <b>Abrir</b> para ver o passo a passo: se marcou, qual vaga escolheu, captchas e a mensagem final.</p>
+          <p>Também confira na aba <b>Serviços</b> os plantões que já estão marcados na sua conta.</p>`)}
+
+        <h3 class="text-gray-400 text-xs uppercase tracking-wide font-semibold mb-2 mt-5">Por dentro do sistema</h3>
+        ${acc('🧠', 'A IA de captcha (aprende sozinha)', `
+          <p>Uma inteligência <b>própria</b> resolve os captchas — <b>de graça</b>, sem depender de serviço pago.</p>
+          <p>A cada uso, ela <b>coleta</b> os captchas que o site confirma como certos e <b>vai ficando mais esperta</b>. Já evoluiu de 43% → 54% → 64% → <b>~75%</b> de acerto. Todo domingo ela se <b>retreina sozinha</b>.</p>`)}
+        ${acc('⚡', 'O que o sistema faz por você', `
+          <ul class="list-disc list-inside space-y-1">
+            <li><b>Login automático</b> ao abrir o app (não precisa clicar).</li>
+            <li><b>Modo persistente:</b> martela até a vaga abrir (bom pro rush das 6h).</li>
+            <li><b>Resistente à lentidão das 6h:</b> quando o site trava, ele larga e re-tenta rápido.</li>
+            <li><b>Confere na lista de marcados</b> se a vaga entrou de verdade.</li>
+            <li>Uma <b>operação por vez</b> na conta, sem se atrapalhar.</li>
+          </ul>`)}
+        ${acc('❓', 'Perguntas frequentes', `
+          <p><b>Preciso clicar para logar?</b> Não — abrir o app já loga.</p>
+          <p><b>Deu "pendente/erro", perdi a vaga?</b> Confira na aba Serviços; às vezes marcou e o site não avisou. O log final também mostra o que apareceu.</p>
+          <p><b>Não achou a vaga?</b> Quase sempre é nome/data/hora do cadastro diferente do site, ou a vaga não abriu/esgotou. Compare com a lista do log.</p>
+          <p><b>Custa algo?</b> O captcha é resolvido pela IA própria, sem custo.</p>`)}
+
+        <p class="text-center text-xs text-gray-600 mt-6">Dica: cadastre na véspera e esteja pronto uns segundos antes das 6h. 🍀</p>
       </div>
     `;
     fixVisibleText();
