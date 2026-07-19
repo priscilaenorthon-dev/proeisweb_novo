@@ -830,6 +830,34 @@ body.login-mode #main-content {
   border-color: #0d9488;
 }
 
+/* ── Vaga cards (listagem: + na frente, descricao completa) ─ */
+.vagas-cards { display: flex; flex-direction: column; gap: 8px; padding: 4px; }
+.vaga-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.vaga-card .btn-vaga-add {
+  flex-shrink: 0;
+  opacity: 1;
+  background: #0d4a42;
+  border-color: #0d9488;
+  color: #5eead4;
+  font-size: 1.15rem;
+  margin-top: 2px;
+}
+.vaga-card .btn-vaga-add:hover { background: #0f766e; border-color: #14b8a6; }
+.vaga-card-body { min-width: 0; flex: 1; }
+.vaga-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+.vaga-card-date { font-size: 0.75rem; color: #9ca3af; font-family: ui-monospace, SFMono-Regular, monospace; }
+.vaga-card-nome { font-size: 0.95rem; font-weight: 600; color: #f3f4f6; line-height: 1.3; word-break: break-word; }
+.vaga-card-end  { font-size: 0.8rem;  color: #9ca3af; margin-top: 3px; word-break: break-word; }
+.vaga-card-conv { font-size: 0.75rem; color: #6b7280; margin-top: 3px; }
+
 /* ── Toast notification ──────────────────────────────────── */
 .toast {
   position: fixed;

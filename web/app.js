@@ -702,21 +702,8 @@ async function renderListarPage() {
               <span class="text-sm font-semibold text-white">Vagas encontradas</span>
               <span id="vagas-count" class="text-xs text-gray-500"></span>
             </div>
-            <div class="card p-0 overflow-auto flex-1">
-              <table class="vagas-table w-full">
-                <thead>
-                  <tr>
-                    <th style="width:90px">Data</th>
-                    <th style="width:70px">Hora</th>
-                    <th style="width:90px">Tipo</th>
-                    <th class="vagas-col-convenio" style="width:120px">Convênio</th>
-                    <th style="min-width:160px">Nome do Evento</th>
-                    <th class="vagas-col-endereco" style="min-width:160px">Endereço</th>
-                    <th style="width:44px"></th>
-                  </tr>
-                </thead>
-                <tbody id="vagas-body"></tbody>
-              </table>
+            <div class="overflow-auto flex-1">
+              <div id="vagas-body" class="vagas-cards"></div>
             </div>
           </div>
           </div>
@@ -870,17 +857,20 @@ async function startListVagas() {
               const tipoBadge = isReserva
                 ? '<span class="badge-tipo reserva">Reserva</span>'
                 : '<span class="badge-tipo titular">Titular</span>';
-              const tr = document.createElement('tr');
-              tr.innerHTML = `
-                <td class="font-mono whitespace-nowrap">${esc(vaga.data || '—')}</td>
-                <td class="font-mono whitespace-nowrap text-teal-400">${esc(hora) || '—'}</td>
-                <td>${tipoBadge}</td>
-                <td class="vagas-col-convenio"><div title="${esc(convenio)}">${esc(convenio)}</div><div class="text-gray-600 text-xs">${esc(cpa)}</div></td>
-                <td><div title="${esc(nomeEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nomeEvento || vaga.label || '—')}</div></td>
-                <td class="vagas-col-endereco"><div title="${esc(endEvento)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(endEvento || '—')}</div></td>
-                <td class="text-center"><button class="btn-vaga-add" title="Criar evento" onclick="vagaParaEvento(${vagaIdx})">➕</button></td>
+              const dataHora = [esc(vaga.data || ''), esc(hora || '')].filter(Boolean).join(' · ') || '—';
+              const card = document.createElement('div');
+              card.className = 'vaga-card';
+              // + na FRENTE e descricao COMPLETA (nome, data/hora, endereco, convenio) sem cortar.
+              card.innerHTML = `
+                <button class="btn-vaga-add" title="Criar evento com esta vaga" onclick="vagaParaEvento(${vagaIdx})">➕</button>
+                <div class="vaga-card-body">
+                  <div class="vaga-card-top">${tipoBadge}<span class="vaga-card-date">${dataHora}</span></div>
+                  <div class="vaga-card-nome">${esc(nomeEvento || vaga.label || '—')}</div>
+                  ${endEvento ? `<div class="vaga-card-end">📍 ${esc(endEvento)}</div>` : ''}
+                  <div class="vaga-card-conv">${esc(convenio)}${cpa ? ' · ' + esc(cpa) : ''}</div>
+                </div>
               `;
-              vagasBody.appendChild(tr);
+              vagasBody.appendChild(card);
             }
             if (vagasEl) vagasEl.classList.remove('hidden');
             if (vagasCount) vagasCount.textContent = `${totalVagas} vaga(s)`;
