@@ -70,6 +70,10 @@
     if (subtitle) subtitle.textContent = 'Automa\u00e7\u00e3o RJ';
   }
 
+  // So repara nos de texto que realmente tem mojibake. Texto limpo (acentos normais)
+  // e deixado intacto — senao o .trim() por-no comeria os espacos entre palavras e
+  // elementos inline (ex.: "em <b>Eventos</b> com" viraria "emEventoscom").
+  const MOJIBAKE_RE = new RegExp('[\\u00c2\\u00c3\\u00c5\\u00f0\\u0178\\u0080-\\u009f]|\\u00e2[^\\s]{0,3}');
   function fixMainText() {
     const root = document.getElementById('content');
     if (!root) return;
@@ -77,6 +81,7 @@
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const node of nodes) {
+      if (!MOJIBAKE_RE.test(node.nodeValue)) continue;
       const fixed = repairText(node.nodeValue);
       if (fixed && fixed !== node.nodeValue) node.nodeValue = fixed;
     }
@@ -437,9 +442,6 @@
         <div class="mb-5">
           <h2 class="text-2xl font-bold text-white">Ajuda &amp; Como usar</h2>
           <p class="text-gray-400 text-sm mt-1">Toque em cada tópico para abrir. Tudo o que o sistema faz por você.</p>
-          <div class="mt-2 inline-flex items-center gap-2 text-xs bg-teal-500/15 text-teal-300 border border-teal-600/40 rounded-full px-3 py-1">
-            <span class="w-2 h-2 rounded-full bg-teal-400"></span> IA de captcha própria &middot; ~75% de acerto &middot; sem custo
-          </div>
         </div>
 
         <div class="rounded-xl border border-teal-600/40 bg-gradient-to-br from-teal-500/10 to-cyan-500/5 p-4 mb-5">
@@ -466,15 +468,12 @@
           <p>Coloque a <b>data e hora certas</b> para o robô ir direto (mais rápido). Sem data, ele varre os dias disponíveis.</p>`)}
         ${acc('▶️', 'Executar — marcar as vagas', `
           <p>Selecione os eventos e toque em <b>Executar</b>. Cada card mostra o <b>nome</b>, data/hora, tipo e endereço, para você diferenciar.</p>
-          <p>Ele marca <b>um de cada vez</b>. O log ao vivo mostra filtros, captcha e a confirmação. Quando termina, aparece o resultado e a <b>lista das vagas que apareceram no dia</b> (para você conferir nome/endereço).</p>`)}
+          <p>Ele marca <b>um de cada vez</b>. O log ao vivo mostra o passo a passo e a confirmação. Quando termina, aparece o resultado e a <b>lista das vagas que apareceram no dia</b> (para você conferir nome/endereço).</p>`)}
         ${acc('🧾', 'Logs — conferir o que aconteceu', `
-          <p>Mostra as execuções recentes. Toque em <b>Abrir</b> para ver o passo a passo: se marcou, qual vaga escolheu, captchas e a mensagem final.</p>
+          <p>Mostra as execuções recentes. Toque em <b>Abrir</b> para ver o passo a passo: se marcou, qual vaga escolheu e a mensagem final.</p>
           <p>Também confira na aba <b>Serviços</b> os plantões que já estão marcados na sua conta.</p>`)}
 
         <h3 class="text-gray-400 text-xs uppercase tracking-wide font-semibold mb-2 mt-5">Por dentro do sistema</h3>
-        ${acc('🧠', 'A IA de captcha (aprende sozinha)', `
-          <p>Uma inteligência <b>própria</b> resolve os captchas — <b>de graça</b>, sem depender de serviço pago.</p>
-          <p>A cada uso, ela <b>coleta</b> os captchas que o site confirma como certos e <b>vai ficando mais esperta</b>. Já evoluiu de 43% → 54% → 64% → <b>~75%</b> de acerto. Todo domingo ela se <b>retreina sozinha</b>.</p>`)}
         ${acc('⚡', 'O que o sistema faz por você', `
           <ul class="list-disc list-inside space-y-1">
             <li><b>Login automático</b> ao abrir o app (não precisa clicar).</li>
@@ -487,7 +486,7 @@
           <p><b>Preciso clicar para logar?</b> Não — abrir o app já loga.</p>
           <p><b>Deu "pendente/erro", perdi a vaga?</b> Confira na aba Serviços; às vezes marcou e o site não avisou. O log final também mostra o que apareceu.</p>
           <p><b>Não achou a vaga?</b> Quase sempre é nome/data/hora do cadastro diferente do site, ou a vaga não abriu/esgotou. Compare com a lista do log.</p>
-          <p><b>Custa algo?</b> O captcha é resolvido pela IA própria, sem custo.</p>`)}
+          <p><b>Deu erro no meio?</b> Deixe o app aberto e na tela durante a execução, e evite abrir outra ação ao mesmo tempo.</p>`)}
 
         <p class="text-center text-xs text-gray-600 mt-6">Dica: cadastre na véspera e esteja pronto uns segundos antes das 6h. 🍀</p>
       </div>
