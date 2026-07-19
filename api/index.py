@@ -1442,6 +1442,9 @@ def session_keepalive_web(body: TestLoginRequest):
     if _account_is_busy():
         return {"ok": True, "status": "ocupada"}
 
+    # Segura a conta durante o restore/login: o warmup paralelo (do session-status)
+    # pula enquanto isso, evitando dois logins simultaneos na abertura do app.
+    _account_enter()
     try:
         with _env_lock:
             _apply_runtime_options(body)
@@ -1468,6 +1471,8 @@ def session_keepalive_web(body: TestLoginRequest):
     except Exception as exc:
         print(f"[KEEPALIVE] Erro no keepalive web: {exc}")
         return {"ok": False, "status": "erro", "message": str(exc)}
+    finally:
+        _account_exit()
 
 from starlette.staticfiles import StaticFiles
 

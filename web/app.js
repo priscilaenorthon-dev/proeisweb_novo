@@ -1700,7 +1700,7 @@ async function checkApiStatus() {
 // ── Init ───────────────────────────────────────────────────
 (async () => {
   navigate('events');
-  startSessionKeepAlive();
+  startSessionKeepAlive(true);  // loga imediatamente ao abrir (nao espera 45s nem o 1o toque)
   checkApiStatus();
   loadOptions();
 })();
