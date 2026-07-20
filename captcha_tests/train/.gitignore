@@ -6,6 +6,9 @@ real_labels.json
 *_log.txt
 *log*.txt
 retrain_log*.txt
+*.log
+# token OAuth (symlink para scratchpad) — NUNCA versionar:
+user_token.txt
 # O modelo servido em producao PRECISA ir para o container (excecoes ao *.onnx acima):
 !model.onnx
 !model.onnx.data
