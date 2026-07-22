@@ -1191,9 +1191,15 @@ async def run_scheduled(request: Request):
         return {"ok": True, "status": "sem-eventos", "confirmed": 0, "total": 0,
                 "message": "Nenhum evento com data futura cadastrado."}
 
+    # Modo teste (dry): ?dry=1 loga e varre mas NAO marca nada, e usa janela curta.
+    # Serve pra validar o pipeline (login + varredura) sem risco de marcar vaga.
+    dry_run = request.query_params.get("dry", "") in ("1", "true", "yes")
     # Janela generosa: dispara 5h58 e fica insistindo (re-varrendo) ate ~6h08,
     # cobrindo a abertura das 6h. batch_max_no_action_rounds=0 => nao desiste.
-    window = max(60, int(os.getenv("SCHEDULED_BATCH_WINDOW", "600")))
+    if dry_run:
+        window = max(30, int(os.getenv("SCHEDULED_DRY_WINDOW", "45")))
+    else:
+        window = max(60, int(os.getenv("SCHEDULED_BATCH_WINDOW", "600")))
 
     with _batch_guard:
         active = _current_batch.get("run")
@@ -1221,7 +1227,7 @@ async def run_scheduled(request: Request):
         t_total = time.monotonic()
         _account_enter()  # segura a conta ate o finally (bloqueia login paralelo)
         try:
-            print(f"[OP] Robo agendado iniciado: id={op_id} | sub-eventos={len(events)} | janela={window}s")
+            print(f"[OP] Robo agendado iniciado: id={op_id} | sub-eventos={len(events)} | janela={window}s | dry_run={dry_run}")
             events.sort(key=lambda ev: (
                 ev.get("convenio", ""), ev.get("data_evento", ""), ev.get("cpa", ""),
                 ev.get("disponivel", ""), ev.get("hora_evento", ""), ev.get("nome_evento", ""),
@@ -1240,7 +1246,7 @@ async def run_scheduled(request: Request):
 
             t_batch = time.monotonic()
             confirmed = run_batch_events(
-                client, events, dry_run=False, scan_rounds=1,
+                client, events, dry_run=dry_run, scan_rounds=1,
                 recovery_window_seconds=0, batch_window_seconds=window,
                 batch_repeat_pause_seconds=1, batch_max_no_action_rounds=0,
             )
