@@ -1146,6 +1146,12 @@ def _scheduled_run_requests() -> list[RunRequest]:
     Credenciais ficam vazias -> o endpoint usa as variaveis de ambiente."""
     tz = timezone(timedelta(hours=-3))
     today = datetime.now(tz).date().isoformat()
+    # O robo casa a vaga por NOME + HORA (unicos por evento). O endereco NAO entra
+    # no casamento: um errinho de digitacao no endereco faria a vaga ser PULADA
+    # mesmo estando aberta (event_matches exige que todos os filtros ativos batam).
+    # Como nome+hora ja identificam a vaga, ignorar o endereco so aumenta a chance
+    # de marcar. Para reativar, defina SCHEDULED_MATCH_ENDERECO=1.
+    use_endereco = os.getenv("SCHEDULED_MATCH_ENDERECO", "0") in ("1", "true", "yes")
     reqs: list[RunRequest] = []
     for ev in _stored_events():
         dates = [d.strip() for d in str(ev.get("data_evento", "")).split(",") if d.strip()]
@@ -1160,7 +1166,7 @@ def _scheduled_run_requests() -> list[RunRequest]:
                     cpa=str(ev.get("cpa", "")),
                     disponivel=str(ev.get("disponivel", "") or "nao-reserva"),
                     nome_evento=str(ev.get("nome_evento", "")),
-                    endereco=str(ev.get("endereco", "")),
+                    endereco=str(ev.get("endereco", "")) if use_endereco else "",
                     data_evento=iso,
                     hora_evento=hora,
                     scan_rounds=1,
