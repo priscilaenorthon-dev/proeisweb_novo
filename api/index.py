@@ -1124,6 +1124,177 @@ async def run_batch_fast(body: BatchRunRequest):
     threading.Thread(target=_run_safe, daemon=True).start()
     return _sse_response(_stream_batch(run, 0, attached=False))
 
+
+def _iso_or_none(value: str) -> Optional[str]:
+    """Normaliza data para 'yyyy-mm-dd'. Aceita 'yyyy-mm-dd' ou 'dd/mm/yyyy'."""
+    s = (value or "").strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", s)
+    if m:
+        return s
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return None
+
+
+def _scheduled_run_requests() -> list[RunRequest]:
+    """Le os eventos cadastrados no Firestore e os expande em RunRequests
+    (uma por data x hora), igual ao expandEventForRun do front. Mantem apenas
+    datas de hoje em diante (fuso de Brasilia, UTC-3), pra nao tentar data passada.
+    Credenciais ficam vazias -> o endpoint usa as variaveis de ambiente."""
+    tz = timezone(timedelta(hours=-3))
+    today = datetime.now(tz).date().isoformat()
+    reqs: list[RunRequest] = []
+    for ev in _stored_events():
+        dates = [d.strip() for d in str(ev.get("data_evento", "")).split(",") if d.strip()]
+        times = [t.strip() for t in str(ev.get("hora_evento", "")).split(",") if t.strip()] or [""]
+        for raw_date in dates:
+            iso = _iso_or_none(raw_date)
+            if iso is None or iso < today:
+                continue
+            for hora in times:
+                reqs.append(RunRequest(
+                    convenio=str(ev.get("convenio", "")),
+                    cpa=str(ev.get("cpa", "")),
+                    disponivel=str(ev.get("disponivel", "") or "nao-reserva"),
+                    nome_evento=str(ev.get("nome_evento", "")),
+                    endereco=str(ev.get("endereco", "")),
+                    data_evento=iso,
+                    hora_evento=hora,
+                    scan_rounds=1,
+                ))
+    return reqs
+
+
+@app.post("/api/run-scheduled")
+async def run_scheduled(request: Request):
+    """Robo agendado (Cloud Scheduler dispara ~5h58 de quinta). Autentica pelo
+    header X-Scheduler-Secret, busca os eventos cadastrados sozinho, e roda o
+    mesmo batch persistente titular-only do botao Executar. Segura a conexao ate
+    o fim (mantem a CPU ativa no Cloud Run) e devolve um resumo em JSON."""
+    secret = os.getenv("SCHEDULER_SECRET", "")
+    provided = request.headers.get("X-Scheduler-Secret", "") or request.query_params.get("secret", "")
+    if not secret or provided != secret:
+        raise HTTPException(status_code=403, detail="Segredo do agendador invalido.")
+    load_env_file()
+
+    login_val = os.getenv("PROEIS_LOGIN", "")
+    password_val = os.getenv("PROEIS_PASSWORD", "")
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if not (login_val and password_val and gemini_key):
+        raise HTTPException(status_code=500, detail="Credenciais PROEIS/GEMINI nao configuradas no servico.")
+
+    reqs = _scheduled_run_requests()
+    if not reqs:
+        return {"ok": True, "status": "sem-eventos", "confirmed": 0, "total": 0,
+                "message": "Nenhum evento com data futura cadastrado."}
+
+    # Janela generosa: dispara 5h58 e fica insistindo (re-varrendo) ate ~6h08,
+    # cobrindo a abertura das 6h. batch_max_no_action_rounds=0 => nao desiste.
+    window = max(60, int(os.getenv("SCHEDULED_BATCH_WINDOW", "600")))
+
+    with _batch_guard:
+        active = _current_batch.get("run")
+        if active is not None and not active.done.is_set():
+            return {"ok": True, "status": "ja-rodando", "op_id": active.op_id, "confirmed": 0,
+                    "total": active.result.get("total", 0),
+                    "message": "Ja existe um batch em andamento; nada iniciado."}
+        op_id = uuid.uuid4().hex[:8]
+        run = _BatchRun(op_id, len(reqs))
+        _current_batch["run"] = run
+
+    ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result = run.result
+    perf = run.perf
+    emit = run.emit
+    events = [_batch_event_payload(r) for r in reqs]
+
+    def _run() -> None:
+        _LOGS_DIR.mkdir(exist_ok=True)
+        log_path = _LOGS_DIR / f"{ts_str}_{op_id}_run_scheduled.log"
+        log_file = open(log_path, "w", encoding="utf-8", buffering=1)
+        log_lines: list[str] = []
+        cap = _Capture(emit, log_file, log_lines)
+        _thread_local.capture = cap
+        t_total = time.monotonic()
+        _account_enter()  # segura a conta ate o finally (bloqueia login paralelo)
+        try:
+            print(f"[OP] Robo agendado iniciado: id={op_id} | sub-eventos={len(events)} | janela={window}s")
+            events.sort(key=lambda ev: (
+                ev.get("convenio", ""), ev.get("data_evento", ""), ev.get("cpa", ""),
+                ev.get("disponivel", ""), ev.get("hora_evento", ""), ev.get("nome_evento", ""),
+            ))
+            with _env_lock:
+                client = ProeisHTTP(
+                    login=login_val, password=password_val, gemini_api_key=gemini_key,
+                )
+            t_session = time.monotonic()
+            _warmup_event.wait(timeout=30)
+            if not _try_restore_session(client):
+                login_with_retries(client, "Login via robo agendado")
+                _fetch_user_name_and_save(client)
+            perf["session_ms"] = int((time.monotonic() - t_session) * 1000)
+            print(f"[PERF] session_ms={perf['session_ms']}")
+
+            t_batch = time.monotonic()
+            confirmed = run_batch_events(
+                client, events, dry_run=False, scan_rounds=1,
+                recovery_window_seconds=0, batch_window_seconds=window,
+                batch_repeat_pause_seconds=1, batch_max_no_action_rounds=0,
+            )
+            perf["batch_ms"] = int((time.monotonic() - t_batch) * 1000)
+            print(f"[PERF] batch_ms={perf['batch_ms']}")
+
+            _resave_current_session(client)
+            _save_captcha_samples(client)
+            result["confirmed"] = confirmed
+            result["status"] = "confirmado" if confirmed > 0 else "pendente"
+            result["message"] = ""
+        except AutomationError as exc:
+            result["status"] = "erro"
+            result["message"] = str(exc)
+        except Exception as exc:
+            result["status"] = "erro"
+            result["message"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            _account_exit()
+            try:
+                perf["total_ms"] = int((time.monotonic() - t_total) * 1000)
+                print(f"[OP] Robo agendado encerrado: status={result['status']} | confirmadas={result['confirmed']}/{result['total']}")
+            except BaseException:
+                pass
+            try:
+                _save_operation_log(op_id, "run_scheduled", result["status"], log_lines, log_path.name, result)
+            except BaseException:
+                pass
+            _thread_local.capture = None
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            emit(None)
+
+    def _run_safe() -> None:
+        try:
+            _run()
+        finally:
+            run.emit(None)
+
+    threading.Thread(target=_run_safe, daemon=True).start()
+
+    # Segura a requisicao ate o batch terminar (CPU ativa) com teto de seguranca.
+    max_wait = window + 120
+    waited = 0.0
+    while not run.done.is_set() and waited < max_wait:
+        await asyncio.sleep(1.0)
+        waited += 1.0
+    return {"ok": True, "op_id": op_id, "status": result["status"],
+            "confirmed": result["confirmed"], "total": result["total"],
+            "message": result.get("message", ""), "perf": perf}
+
+
 @app.post("/api/list-vagas")
 async def list_vagas(body: ListVagasRequest):
     load_env_file()
