@@ -237,7 +237,7 @@ def _account_exit() -> None:
 def _account_is_busy() -> bool:
     return _account_busy > 0
 _LOGS_DIR = ROOT / "logs"
-_SSE_PADDING = ":" + (" " * 2048) + "\n\n"
+_SSE_PADDING = ":" + (" " * 8192) + "\n\n"
 _LOGS_LIMIT = 200
 
 # Thread-local storage para captura por thread (evita mistura de logs em requisicoes concorrentes)
@@ -858,6 +858,7 @@ async def run_automation(body: RunRequest):
         thread.start()
         yield _SSE_PADDING
         elapsed_idle = 0
+        emitted = 0
         try:
             while True:
                 try:
@@ -866,6 +867,11 @@ async def run_automation(body: RunRequest):
                     if item is None:
                         break
                     yield _sse_data(item)
+                    # Re-priming periodico: forca o flush contra proxies/navegadores
+                    # que voltam a bufferizar depois do pacote inicial (desktop/web).
+                    emitted += 1
+                    if emitted % 6 == 0:
+                        yield ": flush\n\n"
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
@@ -1420,6 +1426,7 @@ async def list_vagas(body: ListVagasRequest):
         thread.start()
         yield _SSE_PADDING
         elapsed_idle = 0
+        emitted = 0
         try:
             while True:
                 try:
@@ -1428,6 +1435,11 @@ async def list_vagas(body: ListVagasRequest):
                     if item is None:
                         break
                     yield _sse_data(item)
+                    # Re-priming periodico: forca o flush contra proxies/navegadores
+                    # que voltam a bufferizar depois do pacote inicial (desktop/web).
+                    emitted += 1
+                    if emitted % 6 == 0:
+                        yield ": flush\n\n"
                 except asyncio.TimeoutError:
                     elapsed_idle += 3
                     if elapsed_idle >= 120:
