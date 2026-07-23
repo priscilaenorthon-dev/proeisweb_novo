@@ -3,6 +3,14 @@
 > Memória do projeto. Este arquivo é lido no início de toda sessão do Claude Code.
 > Objetivo do dono: **não perder vaga TITULAR** que abre às **6h de quinta-feira**.
 
+## ⭐ CHECAR PRIMEIRO na próxima quinta (30/07) — dúvida do dono
+Ler o log `run_scheduled` da quinta (agora completo, 8000 linhas) e responder:
+1. **Horário EXATO (Brasília) de cada vaga marcada** — foi antes ou depois das 6h00?
+2. **Apareceu alguma vaga TITULAR antes das 6h00** no dropdown/na varredura?
+   (Hoje 23/07 não deu pra provar: o log tinha só 2000 linhas e cortou o começo.)
+Grep no `content` por: `Clicando em 'Eu Vou'`, `Clicado Eu vou`, `Marcacao confirmada`,
+e pelos horários `[HH:MM:SS]` (UTC; Brasília = -3h). Reportar ao dono.
+
 ## O que é
 App que automatiza a marcação de plantões voluntários (vagas) no site do PROEIS RJ
 (`www.proeis.rj.gov.br`, ASP.NET WebForms com __VIEWSTATE e captcha). O usuário
