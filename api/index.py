@@ -536,7 +536,7 @@ def _save_operation_log(
             "size_kb": round(len(content.encode("utf-8")) / 1024, 1),
             "created_at": now_dt.isoformat(),
             # TTL nativo: log antigo se apaga sozinho apos N dias.
-            "expire_at": now_dt + timedelta(days=int(os.getenv("LOG_TTL_DAYS", "30"))),
+            "expire_at": now_dt + timedelta(days=int(os.getenv("LOG_TTL_DAYS", "14"))),
             "result": {k: v for k, v in result.items() if isinstance(v, (str, int, float, bool)) or v is None},
         })
     except Exception:
