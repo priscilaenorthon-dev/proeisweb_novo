@@ -2872,6 +2872,14 @@ def run_batch_events(
     original_data: dict[int, str] = {i: e["data_evento"] for i, e in enumerate(events, 1)}
     pending: list[tuple[int, dict[str, Any]]] = list(enumerate(events, 1))
     deadline = time.monotonic() + batch_window_seconds if batch_window_seconds > 0 else None
+    # Corte de datas mortas: depois que as vagas tiveram tempo de abrir (grace ~
+    # ate 6h01, ja que o robo comeca 5h58), um evento que segue "sem vaga" por
+    # algumas rodadas e descartado da fila — aquela data nao tem plantao desse
+    # evento. Assim o robo para de gastar tempo/captcha com data morta e foca nas
+    # vagas que existem de verdade (era o gargalo das 6h).
+    dead_grace_deadline = time.monotonic() + int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
+    dead_drop_after = max(1, int(os.getenv("BATCH_DEAD_DROP_AFTER", "2")))
+    dead_rounds: dict[int, int] = {}
     round_index = 1
     confirmed_per_event: dict[int, int] = {}  # indice do evento -> quantas vezes marcou
     event_status: dict[int, str] = {}
@@ -2928,6 +2936,22 @@ def run_batch_events(
                 no_action_this_round += 1
                 remaining = int(deadline - time.monotonic()) if deadline is not None else 0
                 if deadline is not None and remaining > 0:
+                    # Passado o grace (vagas ja tiveram tempo de abrir), conta as
+                    # rodadas sem vaga; se persistir, descarta (data morta) e libera
+                    # a fila. Antes do grace, insiste sempre (vaga pode estar abrindo).
+                    if time.monotonic() >= dead_grace_deadline:
+                        dead_rounds[index] = dead_rounds.get(index, 0) + 1
+                        if dead_rounds[index] >= dead_drop_after:
+                            no_action_total += 1
+                            event_status[index] = "sem vaga (data sem plantao)"
+                            _log(
+                                "INFO",
+                                f"Evento {index}/{len(events)} descartado da fila: sem vaga em "
+                                f"{dead_rounds[index]} rodada(s) apos a abertura das 6h "
+                                f"(data provavelmente sem plantao desse evento). "
+                                f"Foco nas vagas que existem.",
+                            )
+                            continue
                     event_status[index] = "pendente"
                     next_pending.append((index, event))
                     _log(
