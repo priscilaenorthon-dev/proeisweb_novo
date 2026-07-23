@@ -516,7 +516,15 @@ def _save_operation_log(
     result: dict[str, Any],
 ) -> None:
     try:
-        content = "\n".join(lines[-2000:])
+        # Guarda as ultimas N linhas (default 8000, cobre um run inteiro das 6h
+        # com todas as re-tentativas) — pra dar pra estudar o log completo.
+        # Cap por bytes garante que nao estoura o teto de 1 MiB do doc Firestore.
+        max_lines = int(os.getenv("LOG_MAX_LINES", "8000"))
+        content = "\n".join(lines[-max_lines:])
+        max_bytes = int(os.getenv("LOG_MAX_BYTES", "800000"))
+        enc = content.encode("utf-8")
+        if len(enc) > max_bytes:
+            content = enc[-max_bytes:].decode("utf-8", "ignore")
         now_dt = datetime.now(timezone.utc)
         _logs_collection().document(op_id).set({
             "op_id": op_id,
