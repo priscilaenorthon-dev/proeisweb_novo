@@ -1398,6 +1398,7 @@ class ProeisHTTP:
                 for attempt in range(1, max_filter_attempts + 1):
                     payload = self.form_payload(soup)
                     fields = self.find_fields(soup)
+                    self.require_fields(fields, ("data",))
                     payload[fields["data"]] = value
                     self.set_field(payload, fields, "cpa", cpa)
                     self.fill_page_captcha(soup, payload)
@@ -1550,6 +1551,7 @@ class ProeisHTTP:
                 for attempt in range(1, max_filter_attempts + 1):
                     payload = self.form_payload(soup)
                     fields = self.find_fields(soup)
+                    self.require_fields(fields, ("data",))
                     payload[fields["data"]] = value
                     self.set_field(payload, fields, "cpa", cpa)
                     self.fill_page_captcha(soup, payload)
@@ -1648,6 +1650,7 @@ class ProeisHTTP:
 
                 payload = self.form_payload(soup)
                 fields = self.find_fields(soup)
+                self.require_fields(fields, ("data",))
                 payload[fields["data"]] = value
                 self.set_field(payload, fields, "cpa", cpa)
                 self.fill_page_captcha(soup, payload)
@@ -1781,6 +1784,20 @@ class ProeisHTTP:
                 fields["cpa"] = name
         _log("FORM", f"Campos identificados no formulario: {fields}")
         return fields
+
+    def require_fields(self, fields: dict[str, str], needed: tuple[str, ...] = ("data",)) -> None:
+        """Sob carga (tipicamente as 6h), o PROEIS as vezes devolve uma pagina
+        incompleta, sem os selects do formulario (fields == {}). Antes o codigo
+        fazia fields['data'] direto e quebrava com KeyError, MATANDO a operacao
+        inteira. Agora levantamos AutomationError, que e' tratado como 'site
+        engasgou' e re-tentado (Regra 1/2/3), transformando um erro morto em
+        nova chance de marcar."""
+        missing = [k for k in needed if not fields.get(k)]
+        if missing:
+            raise AutomationError(
+                f"Formulario do PROEIS veio incompleto (faltou: {', '.join(missing)}); "
+                "provavelmente sobrecarga do site. Vou tentar de novo."
+            )
 
     def label_for(self, soup: BeautifulSoup, control_id: str | None) -> str:
         if not control_id:
