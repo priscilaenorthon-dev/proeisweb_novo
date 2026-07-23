@@ -2880,6 +2880,12 @@ def run_batch_events(
     dead_grace_deadline = time.monotonic() + int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
     dead_drop_after = max(1, int(os.getenv("BATCH_DEAD_DROP_AFTER", "2")))
     dead_rounds: dict[int, int] = {}
+    # Re-scan na virada das 6h: se a operacao comecou antes das 6h (Brasilia,
+    # Cloud Run roda em UTC = -3h), na primeira rodada que cruzar as 6h00 o robo
+    # joga fora qualquer tela em cache e re-consulta do zero — garante pegar o
+    # lote novo de vagas que cai exatamente as 6h. Desliga com BATCH_RESCAN_6H=0.
+    _rescan_6h_on = os.getenv("BATCH_RESCAN_6H", "1") in ("1", "true", "yes")
+    _rescan_6h_pending = _rescan_6h_on and (datetime.now() - timedelta(hours=3)).hour < 6
     round_index = 1
     confirmed_per_event: dict[int, int] = {}  # indice do evento -> quantas vezes marcou
     event_status: dict[int, str] = {}
@@ -2890,6 +2896,13 @@ def run_batch_events(
     while pending:
         confirmed_this_round = 0
         no_action_this_round = 0
+        # Virada das 6h: na primeira rodada apos as 6h00, descarta qualquer tela
+        # em cache e forca re-consulta do zero — pega o lote novo de vagas.
+        if _rescan_6h_pending and (datetime.now() - timedelta(hours=3)).hour >= 6:
+            _log("INFO", "Virada das 6h: descartando telas em cache e re-consultando tudo do zero (lote novo de vagas).")
+            last_group = ("", "", "")
+            client.soup = None
+            _rescan_6h_pending = False
         if round_index > 1:
             _log("INFO", f"=== Nova varredura {round_index}: {len(pending)} evento(s) ainda pendente(s) ===")
             for index, event in pending:
