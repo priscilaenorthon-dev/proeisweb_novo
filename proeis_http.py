@@ -2715,6 +2715,19 @@ def is_no_action_available_error(message: str) -> bool:
     )
 
 
+def is_clicked_not_confirmed_error(message: str) -> bool:
+    """Vaga EXISTIA e o 'Eu Vou' foi clicado, mas o site nao confirmou.
+
+    Sintoma classico das 6h: sob carga o site recusa submissao valida (captcha certo).
+    Prova que a data tem plantao — o evento nunca deve ser tratado como data morta.
+    """
+    message_norm = norm(message)
+    return (
+        "site nao confirmou a marcacao" in message_norm
+        or "nao encontrei confirmacao de sucesso" in message_norm
+    )
+
+
 def recover_until_ready(client: ProeisHTTP, reason: str, window_seconds: int) -> None:
     if window_seconds <= 0:
         ensure_session_ready(client, reason)
@@ -2751,6 +2764,7 @@ def run_one_batch_event(
     scan_rounds: int,
     recovery_window_seconds: int,
     last_group: tuple[str, str, str],
+    known_alive: bool = False,
 ) -> tuple[bool, bool, tuple[str, str, str], str]:
     group = (event["convenio"], event["data_evento"], event["cpa"])
     _log(
@@ -2760,15 +2774,26 @@ def run_one_batch_event(
     )
     last_error = ""
 
-    max_attempts = 3
+    # Evento ja provado vivo (vaga apareceu antes) merece mais insistencia: o que
+    # falta e o site aceitar a submissao, nao a vaga existir.
+    if known_alive:
+        max_attempts = max(1, int(os.getenv("BATCH_ALIVE_ATTEMPTS", "6")))
+        _log(
+            "INFO",
+            f"Evento {index}/{total} ja apareceu com vaga real antes; "
+            f"insistindo ate {max_attempts}x nesta rodada.",
+        )
+    else:
+        max_attempts = max(1, int(os.getenv("BATCH_EVENT_ATTEMPTS", "3")))
 
     for attempt in range(1, max_attempts + 1):
         try:
-            if attempt == 2:
+            # Alterna: retry rapido (tela nova) e, a cada 3a tentativa, sessao nova.
+            if attempt > 1 and attempt % 3 != 0:
                 _log("INFO", f"Regra 1: retry imediato do evento {index}/{total} apos clique sem confirmacao.")
                 client.soup = None
                 last_group = ("", "", "")
-            elif attempt == 3:
+            elif attempt > 1:
                 _log("INFO", f"Regra 2: retry do evento {index}/{total} apos logout/login.")
                 try:
                     client.session.cookies.clear()
@@ -2880,6 +2905,9 @@ def run_batch_events(
     dead_grace_deadline = time.monotonic() + int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
     dead_drop_after = max(1, int(os.getenv("BATCH_DEAD_DROP_AFTER", "2")))
     dead_rounds: dict[int, int] = {}
+    # Eventos cuja vaga JA apareceu de verdade (clicamos 'Eu Vou'). Nunca podem ser
+    # descartados como "data morta": a vaga existe, o site e que recusou.
+    seen_alive: set[int] = set()
     # Re-scan na virada das 6h: se a operacao comecou antes das 6h (Brasilia,
     # Cloud Run roda em UTC = -3h), na primeira rodada que cruzar as 6h00 o robo
     # joga fora qualquer tela em cache e re-consulta do zero — garante pegar o
@@ -2928,6 +2956,7 @@ def run_batch_events(
                 scan_rounds,
                 recovery_window_seconds,
                 last_group,
+                known_alive=index in seen_alive,
             )
             if success:
                 confirmed_total += 1
@@ -2952,7 +2981,9 @@ def run_batch_events(
                     # Passado o grace (vagas ja tiveram tempo de abrir), conta as
                     # rodadas sem vaga; se persistir, descarta (data morta) e libera
                     # a fila. Antes do grace, insiste sempre (vaga pode estar abrindo).
-                    if time.monotonic() >= dead_grace_deadline:
+                    # Se a vaga desse evento JA apareceu antes, nao e data morta:
+                    # o site so esta instavel. Mantem na fila ate a janela acabar.
+                    if time.monotonic() >= dead_grace_deadline and index not in seen_alive:
                         dead_rounds[index] = dead_rounds.get(index, 0) + 1
                         if dead_rounds[index] >= dead_drop_after:
                             no_action_total += 1
@@ -2982,7 +3013,23 @@ def run_batch_events(
                 )
                 continue
 
-            event_status[index] = "pendente"
+            if is_clicked_not_confirmed_error(last_error):
+                # A vaga EXISTE (clicamos 'Eu Vou'); quem recusou foi o site sob carga.
+                # Marca o evento como vivo para nunca ser descartado como data morta
+                # e zera o contador de rodadas mortas acumulado antes.
+                first_time = index not in seen_alive
+                seen_alive.add(index)
+                dead_rounds[index] = 0
+                event_status[index] = "vaga existe, site recusou confirmacao"
+                if first_time:
+                    _log(
+                        "INFO",
+                        f"Evento {index}/{len(events)} '{nome}': vaga TITULAR existe de verdade "
+                        f"(clique feito, site nao confirmou). Marcado como prioritario: "
+                        f"nao sera descartado como data morta e vai insistir ate o fim da janela.",
+                    )
+            else:
+                event_status[index] = "pendente"
             next_pending.append((index, event))
             if last_error:
                 _log(
@@ -2990,6 +3037,18 @@ def run_batch_events(
                     f"Evento {index}/{len(events)} segue pendente: "
                     f"nome='{event['nome_evento']}' data='{event['data_evento']}' hora='{event['hora_evento']}' erro='{last_error}'",
                 )
+
+        # Eventos com vaga comprovada vao para a frente da fila: se a janela acabar,
+        # que acabe nos eventos duvidosos, nunca numa vaga que sabemos que existe.
+        if seen_alive:
+            alive = [item for item in next_pending if item[0] in seen_alive]
+            rest = [item for item in next_pending if item[0] not in seen_alive]
+            if alive and rest:
+                _log(
+                    "INFO",
+                    f"Priorizando {len(alive)} evento(s) com vaga comprovada na proxima varredura.",
+                )
+            next_pending = alive + rest
 
         pending = next_pending
         if not pending:

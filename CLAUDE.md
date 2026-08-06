@@ -68,8 +68,11 @@ de graça. Gemini só como fallback raro. Rótulos de treino vêm do próprio si
 ## Como marcar/estudar depende de ler LOGS do Firestore
 - `operation_logs` guarda cada operação (kind: `run_scheduled`, `run_batch_fast`,
   `run`, `listar`). Campo `content` = log completo (até 8000 linhas).
-- Query com filtro `kind` + `orderBy created_at` precisa de índice composto (falha);
-  contorne com orderBy só em created_at, ou filtre e ordene no Python.
+- Query com filtro `kind` + `orderBy created_at` **já funciona** — o índice composto
+  (`kind` ASC + `created_at` DESC) foi criado em 06/08 e está READY. Antes disso o
+  Firestore devolvia `400 FAILED_PRECONDITION "The query requires an index"`, o que
+  quebrava o cron de aviso das 6h09 (o dono recebia push dizendo que "o Google
+  bloqueou e pediu para ajustar"). Não precisa mais contornar no Python.
 
 ## Estado atual das melhorias (roadmap)
 Feito:
@@ -94,6 +97,19 @@ Em andamento (implementar/testar antes de 30/07):
 - "pendente" = vaga existia mas marcação falhou (captcha/site) → melhorias 2 e 3.
 - Cada convênio publica datas diferentes; conferir com **Listar Vagas** quais datas
   realmente têm vaga antes de cadastrar.
+
+### Rodada de 06/08 (quinta) — 2 marcadas, 1 titular perdida
+- Marcou **MOTO PATRULHA SÃO FIDÉLIS 13/08 e 15/08** (6h00:01 e 6h00:58). IA de
+  captcha: **147 resolvidos, 100% OCR-local, 0 Gemini** (conf até 1.00) — a IA não
+  falhou nenhuma vez.
+- **Perdeu a RAS SÃO FIDÉLIS titular**: o robô achou a vaga e clicou "Eu Vou" **3x**,
+  e nas 3 o site respondeu "Confirmacao de sucesso NAO encontrada" (site sobrecarregado
+  recusando submissão válida). Sinais de pico: 93 páginas vazias, 36 captchas recusados
+  no filtro, 9 quedas de conexão.
+- **Próxima melhoria (a fazer):** quando achar a titular mas o site recusar a
+  confirmação, **insistir muito mais** nesse evento (usou só 536s de 600s — sobra tempo)
+  e **parar de rotular como "sem vaga (data sem plantao)"**, que é diagnóstico errado.
+- Lição: às 8h30 o lote já esvaziou (rodada manual deu 0/30). Só vale insistir NA HORA.
 
 ## Como o usuário volta a este projeto
 Este repo + ambiente é o "projeto CPROEIS". Basta abrir uma sessão nova neste
