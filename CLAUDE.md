@@ -111,6 +111,37 @@ Em andamento (implementar/testar antes de 30/07):
   e **parar de rotular como "sem vaga (data sem plantao)"**, que é diagnóstico errado.
 - Lição: às 8h30 o lote já esvaziou (rodada manual deu 0/30). Só vale insistir NA HORA.
 
+## ⚖️ REGRAS OFICIAIS do PROEIS (pesquisadas em 06/08) — LER ANTES DE MEXER NO ROBÔ
+**Decreto 48.192/2022** (Diário Oficial RJ, fonte oficial) alterou o Dec. 43.538/2012:
+- **§13 — teto semanal: no máximo 2 serviços em dias ÚTEIS + 2 em dias NÃO ÚTEIS, por ciclo semanal.**
+- **§4º — no máximo 120 horas efetivas/mês** (= 15 turnos de 8h) e **mínimo 8h de repouso entre serviços**.
+- §6º — durante **férias e licença especial PODE** participar (não bloquear por férias).
+**Diretriz PM/3 nº 014/11** (BolPM 064): uma vez escalado, **obriga-se a cumprir** (salvo força maior);
+**"tentar burlar a regulamentação" = suspensão de 3 meses + falta GRAVÍSSIMA**, reincidência = exclusão;
+atestado/afastamento >72h em 30 dias exclui (retorno após 3 meses); restrição médica exclui.
+
+⚠️ **O robô AINDA NÃO respeita esses tetos** (não implementado — dono ia analisar). Cuidado: as melhorias
+de insistência deixam ele mais agressivo. Em 06/08 apareceram 5 titulares; marcar as 5 teria dado
+**3 em dia não útil (estouro do §13)** e ainda sobreporia 2 plantões no mesmo domingo (fere as 8h).
+Pergunta em aberto p/ o dono: **ele marca RAS por fora do app?** (o teto parece somado entre PROEIS/RAS).
+
+NÃO encontrado em norma nenhuma (não inventar): horário "6h de quinta" (só "ciclos semanais");
+conceito de titular vs reserva; significado de `curso: S/N`.
+
+## Diagnóstico da recusa (por que perdemos vaga) — implementado 06/08
+Antes, `confirm_if_needed` logava só `final_text[:1200]` = o dropdown de convênios; sucesso e recusa
+saíam **idênticos** no log, então "site sobrecarregado" era dedução, não prova.
+Agora `ProeisHTTP.extract_site_feedback()` tira o boilerplate e loga: mensagens de labels/spans
+(id/class ~ msg|erro|alerta|valida), `alert()` do ASP.NET, o texto útil, e — o mais importante —
+**se o rótulo da vaga alvo ainda aparece na página**:
+- alvo **presente** → o site recusou nossa submissão;
+- alvo **sumiu** → outro voluntário levou a vaga (corrida), insistir não adianta.
+Na próxima quinta, **ler esses `[diagnostico]` no log** antes de decidir qualquer nova melhoria.
+
+## Testes (rodar antes de qualquer deploy)
+- `python3 tests/test_vaga_viva.py` — vaga comprovada não vira "data morta" e insiste mais.
+- `python3 tests/test_diagnostico_recusa.py` — os 3 cenários de recusa ficam distinguíveis no log.
+
 ## Como o usuário volta a este projeto
 Este repo + ambiente é o "projeto CPROEIS". Basta abrir uma sessão nova neste
 repositório no Claude Code — este CLAUDE.md carrega sozinho e eu já sei tudo.
