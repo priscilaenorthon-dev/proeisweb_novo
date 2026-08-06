@@ -3066,11 +3066,24 @@ def run_batch_events(
             and consecutive_no_action_rounds >= batch_max_no_action_rounds
             and pending
         ):
-            _log(
-                "INFO",
-                f"Encerrando varredura: atingido limite de {batch_max_no_action_rounds} rodada(s) consecutiva(s) sem acao.",
-            )
-            break
+            # Se ainda ha evento com vaga COMPROVADA na fila, nao encerra: as
+            # rodadas "sem acao" vieram das datas mortas, e desistir aqui jogaria
+            # fora uma vaga titular que sabemos que existe. Insiste ate a janela.
+            vivos_pendentes = [i for i, _ in pending if i in seen_alive]
+            if vivos_pendentes:
+                _log(
+                    "INFO",
+                    f"Limite de {batch_max_no_action_rounds} rodada(s) sem acao atingido, mas "
+                    f"{len(vivos_pendentes)} evento(s) com vaga comprovada seguem pendentes; "
+                    f"continuando ate o fim da janela.",
+                )
+                consecutive_no_action_rounds = 0
+            else:
+                _log(
+                    "INFO",
+                    f"Encerrando varredura: atingido limite de {batch_max_no_action_rounds} rodada(s) consecutiva(s) sem acao.",
+                )
+                break
 
         remaining = int(deadline - time.monotonic())
         if remaining <= 0:
