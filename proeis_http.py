@@ -1889,7 +1889,7 @@ class ProeisHTTP:
             soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
-        self.confirm_if_needed(soup)
+        self.confirm_if_needed(soup, alvo_label=chosen.label)
 
     def simulate_target_events(
         self,
@@ -2074,7 +2074,7 @@ class ProeisHTTP:
             soup = self.post_form(payload)
         else:
             soup = self.request("GET", chosen.action)
-        success = self.confirm_if_needed(soup)
+        success = self.confirm_if_needed(soup, alvo_label=chosen.label)
         if not success and nome_evento:
             # O site as vezes marca (reserva) e volta sem a frase de sucesso. Confere
             # na lista de marcados: se a vaga entrou, e sucesso (evita retry a toa).
@@ -2320,7 +2320,64 @@ class ProeisHTTP:
             return {"target": webform.group(1), "argument": webform.group(2)}
         return None
 
-    def confirm_if_needed(self, soup: BeautifulSoup) -> bool:
+    # Ids/classes que o ASP.NET costuma usar para mensagens ao usuario.
+    _MSG_ATTR_RE = re.compile(
+        r"(msg|mensagem|erro|error|alerta|alert|aviso|valida|resultado|retorno|status)", re.I
+    )
+    # Boilerplate que domina a pagina e escondia a mensagem real no log.
+    _BOILERPLATE_TAGS = ("script", "style", "select", "option", "head")
+
+    @staticmethod
+    def extract_site_feedback(soup: BeautifulSoup, alvo_label: str = "") -> dict[str, Any]:
+        """Extrai o que o site REALMENTE respondeu apos o clique em 'Eu Vou'.
+
+        Antes o log gravava os primeiros 1200 chars da pagina — que sao o menu de
+        convenios. Sucesso e recusa ficavam identicos no log e era impossivel saber
+        o motivo. Aqui tiramos o boilerplate e pegamos mensagens, alertas de JS e
+        sinais que separam "o site engasgou" de "outro policial pegou a vaga".
+        """
+        html = str(soup)
+        limpo = BeautifulSoup(html, "html.parser")
+        for tag in limpo(list(ProeisHTTP._BOILERPLATE_TAGS)):
+            tag.decompose()
+
+        mensagens: list[str] = []
+        for tag in limpo.find_all(True):
+            attrs = " ".join(
+                [tag.get("id", "") or ""] + list(tag.get("class", []) or [])
+            )
+            if not attrs or not ProeisHTTP._MSG_ATTR_RE.search(attrs):
+                continue
+            txt = re.sub(r"\s+", " ", tag.get_text(" ", strip=True)).strip()
+            if txt and len(txt) <= 400 and txt not in mensagens:
+                mensagens.append(txt)
+
+        # ASP.NET often devolve a mensagem via alert('...') no script.
+        alertas = [
+            re.sub(r"\s+", " ", m).strip()
+            for m in re.findall(r"alert\(\s*['\"](.{2,400}?)['\"]\s*\)", html, re.S)
+        ]
+        alertas = list(dict.fromkeys(alertas))
+
+        texto_util = re.sub(r"\s+", " ", limpo.get_text(" ", strip=True)).strip()
+
+        # Sinais que distinguem as hipoteses concorrentes:
+        #  - alvo sumiu / restam menos linhas => outro voluntario levou a vaga
+        #  - alvo continua la              => o site recusou nossa submissao
+        linhas_eu_vou = len(re.findall(r"eu vou", html, re.I))
+        alvo_presente = None
+        if alvo_label:
+            alvo_presente = norm(alvo_label[:60]) in norm(html)
+
+        return {
+            "mensagens": mensagens,
+            "alertas": alertas,
+            "texto_util": texto_util,
+            "linhas_eu_vou": linhas_eu_vou,
+            "alvo_presente": alvo_presente,
+        }
+
+    def confirm_if_needed(self, soup: BeautifulSoup, alvo_label: str = "") -> bool:
         _log("VAGA", "Verificando se ha tela de confirmacao...")
         text = norm(soup.get_text(" ", strip=True))
         if any(word in text for word in ("confirmar", "confirma", "deseja")):
@@ -2341,14 +2398,47 @@ class ProeisHTTP:
                 "incluido com sucesso",
             )
         )
-        _log("VAGA", "Resposta final do site:")
-        print("Retorno final:")
-        print(re.sub(r"\s+", " ", final_text)[:1200])
         if success:
             _log("VAGA", "*** MARCACAO CONFIRMADA PELO SITE ***")
+            return True
+
+        _log("VAGA", "Confirmacao de sucesso NAO encontrada na resposta do site.")
+        # DIAGNOSTICO: por que o site recusou? Sem isto so da para adivinhar.
+        try:
+            fb = self.extract_site_feedback(soup, alvo_label)
+        except Exception as exc:  # diagnostico nunca pode derrubar a marcacao
+            _log("VAGA", f"[diagnostico] falhou ao analisar a resposta: {exc}")
+            print("Retorno final (bruto):")
+            print(re.sub(r"\s+", " ", final_text)[:1200])
+            return False
+
+        _log("VAGA", "--- DIAGNOSTICO DA RECUSA ---")
+        if fb["mensagens"]:
+            for m in fb["mensagens"][:6]:
+                _log("VAGA", f"[diagnostico] mensagem do site: {m}")
         else:
-            _log("VAGA", "Confirmacao de sucesso NAO encontrada na resposta do site.")
-        return success
+            _log("VAGA", "[diagnostico] nenhuma mensagem/label de erro na pagina.")
+        for a in fb["alertas"][:4]:
+            _log("VAGA", f"[diagnostico] alert() do site: {a}")
+
+        if alvo_label:
+            if fb["alvo_presente"]:
+                _log(
+                    "VAGA",
+                    "[diagnostico] a vaga alvo AINDA aparece na pagina -> indica recusa "
+                    "da submissao pelo site (nao foi outro voluntario que pegou).",
+                )
+            else:
+                _log(
+                    "VAGA",
+                    "[diagnostico] a vaga alvo NAO aparece mais na pagina -> indica que "
+                    "a vaga foi ocupada (provavelmente outro voluntario) ou a tela mudou.",
+                )
+        _log("VAGA", f"[diagnostico] linhas 'Eu Vou' restantes na pagina: {fb['linhas_eu_vou']}")
+        # texto ja sem menus/dropdowns: aqui a mensagem real costuma aparecer
+        _log("VAGA", f"[diagnostico] texto util ({len(fb['texto_util'])} chars):")
+        print(fb["texto_util"][:1500])
+        return False
 
     def verify_marking_in_menu(self, nome_evento: str, data_evento: str = "", hora_evento: str = "") -> bool:
         """Confere na lista de marcados (menu #txtEveVoluntario) se a vaga entrou de fato.
