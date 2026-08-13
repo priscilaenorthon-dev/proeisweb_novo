@@ -120,10 +120,9 @@ Em andamento (implementar/testar antes de 30/07):
 **"tentar burlar a regulamentação" = suspensão de 3 meses + falta GRAVÍSSIMA**, reincidência = exclusão;
 atestado/afastamento >72h em 30 dias exclui (retorno após 3 meses); restrição médica exclui.
 
-⚠️ **O robô AINDA NÃO respeita esses tetos** (não implementado — dono ia analisar). Cuidado: as melhorias
-de insistência deixam ele mais agressivo. Em 06/08 apareceram 5 titulares; marcar as 5 teria dado
-**3 em dia não útil (estouro do §13)** e ainda sobreporia 2 plantões no mesmo domingo (fere as 8h).
-Pergunta em aberto p/ o dono: **ele marca RAS por fora do app?** (o teto parece somado entre PROEIS/RAS).
+📌 **DECISÃO DO DONO (06/08): não implementar controle de cota no robô e NÃO levantar mais esse
+assunto.** O registro acima fica só como referência factual da pesquisa. O controle de quantos
+plantões marcar é do dono, não do robô. Não sugerir trava de dias úteis/não úteis novamente.
 
 NÃO encontrado em norma nenhuma (não inventar): horário "6h de quinta" (só "ciclos semanais");
 conceito de titular vs reserva; significado de `curso: S/N`.
