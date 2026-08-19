@@ -60,10 +60,10 @@ Credencial permanente: **conta de serviço `claudinho@gen-lang-client-0105958041
 guardada na **variável de ambiente `CLAUDINHO_SA_KEY`** do ambiente do Claude Code (JSON em uma linha).
 Sobrevive à reciclagem do container — não precisa mais pedir reautorização ao dono.
 
-Para obter um token no início da sessão:
-```python
-# le CLAUDINHO_SA_KEY do ambiente, assina JWT com openssl, salva o access_token
-# (o script sa_auth.py do scratchpad faz isso; recriar se sumir)
+Para obter um token no início da sessão (script versionado, não some com o container):
+```bash
+TOKEN=$(python3 scripts/gcp_auth.py)
+curl -H "Authorization: Bearer $TOKEN" https://firestore.googleapis.com/v1/projects/...
 ```
 Papéis da `claudinho@`: `run.admin`, `cloudscheduler.admin`, `datastore.user`,
 `storage.objectAdmin`, `cloudbuild.builds.editor`, `iam.serviceAccountUser` —
