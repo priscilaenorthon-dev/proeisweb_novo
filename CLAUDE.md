@@ -55,6 +55,23 @@ de graça. Gemini só como fallback raro. Rótulos de treino vêm do próprio si
   `/api/list-vagas` (SSE), `/api/events`, `/api/session-keepalive-web`, etc.
 - `web/` — PWA (app.js, index.html, styles.css, proeis-fixes.js). Sem service worker.
 
+## 🔑 Acesso ao Google Cloud (configurado em 19/08)
+Credencial permanente: **conta de serviço `claudinho@gen-lang-client-0105958041.iam.gserviceaccount.com`**,
+guardada na **variável de ambiente `CLAUDINHO_SA_KEY`** do ambiente do Claude Code (JSON em uma linha).
+Sobrevive à reciclagem do container — não precisa mais pedir reautorização ao dono.
+
+Para obter um token no início da sessão:
+```python
+# le CLAUDINHO_SA_KEY do ambiente, assina JWT com openssl, salva o access_token
+# (o script sa_auth.py do scratchpad faz isso; recriar se sumir)
+```
+Papéis da `claudinho@`: `run.admin`, `cloudscheduler.admin`, `datastore.user`,
+`storage.objectAdmin`, `cloudbuild.builds.editor`, `iam.serviceAccountUser` —
+cobre Firestore, Cloud Run, Scheduler, Storage e deploys. **Não tem** poder de IAM
+nem de faturamento (proposital).
+⚠️ Se `CLAUDINHO_SA_KEY` não estiver setada, o dono precisa colá-la nas configurações
+do ambiente. **A chave NUNCA vai pro git** — continua valendo a regra.
+
 ## Como fazer deploy (fluxo testado)
 1. Precisa de token OAuth Google (escopo cloud-platform). O usuário autoriza; o
    refresh_token/SA key ficam no **scratchpad da sessão** (NÃO no git).
