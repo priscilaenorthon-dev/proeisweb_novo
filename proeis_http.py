@@ -43,6 +43,10 @@ try:
 except ImportError:
     _NUMPY_AVAILABLE = False
 
+# Marcador embutido na mensagem de erro quando a tela volta sem NENHUMA linha
+# 'Eu Vou'. Serve para o lote distinguir "site engasgou" de "data sem plantao".
+PAGINA_VAZIA_MARCA = "[tela-vazia]"
+
 # ── OCR local (ONNX) ─────────────────────────────────────────────────────────
 # Modelo proprio (CNN treinada nos nossos captchas reais) servido via onnxruntime.
 # E o solver PRIMARIO: gratuito e rapido (~5ms), ~43% string / 87% char no gold —
@@ -2041,6 +2045,11 @@ class ProeisHTTP:
                     detail = f" Horas disponíveis desse evento nessa data: {', '.join(horas_disp)}. Ajuste a hora no cadastro do evento."
                 elif nome_evento:
                     detail = " Nenhuma vaga desse evento nessa data (esgotada ou nao publicada); o cadastro pode estar certo."
+            if not candidates:
+                # A tela voltou SEM NENHUMA linha 'Eu Vou' — nem de outros eventos.
+                # Isso e o site engasgando (sobrecarga/500), nao prova de que a data
+                # nao tem plantao. Marcador para o lote NAO contar como data morta.
+                detail += " " + PAGINA_VAZIA_MARCA
             raise AutomationError(f"Nao encontrei a linha exata do evento solicitado.{detail}")
         chosen = filtered[0]
         for pos, candidate in enumerate(filtered[:5], 1):
@@ -2805,6 +2814,17 @@ def is_no_action_available_error(message: str) -> bool:
     )
 
 
+def is_empty_page_error(message: str) -> bool:
+    """A tela voltou sem NENHUMA linha 'Eu Vou' — nem de outros eventos.
+
+    Sob carga (e depois de 500) o PROEIS devolve a pagina vazia. Isso nao prova
+    que a data esta sem plantao, entao nao pode contar como "data morta": em
+    10/09 quatro eventos foram descartados assim e uma vaga real (35 ZE, 15/09,
+    4 postos) foi perdida com 5 minutos de janela ainda sobrando.
+    """
+    return norm(PAGINA_VAZIA_MARCA) in norm(message)
+
+
 def is_clicked_not_confirmed_error(message: str) -> bool:
     """Vaga EXISTIA e o 'Eu Vou' foi clicado, mas o site nao confirmou.
 
@@ -2987,12 +3007,26 @@ def run_batch_events(
     original_data: dict[int, str] = {i: e["data_evento"] for i, e in enumerate(events, 1)}
     pending: list[tuple[int, dict[str, Any]]] = list(enumerate(events, 1))
     deadline = time.monotonic() + batch_window_seconds if batch_window_seconds > 0 else None
-    # Corte de datas mortas: depois que as vagas tiveram tempo de abrir (grace ~
-    # ate 6h01, ja que o robo comeca 5h58), um evento que segue "sem vaga" por
-    # algumas rodadas e descartado da fila — aquela data nao tem plantao desse
-    # evento. Assim o robo para de gastar tempo/captcha com data morta e foca nas
-    # vagas que existem de verdade (era o gargalo das 6h).
-    dead_grace_deadline = time.monotonic() + int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
+    # Corte de datas mortas: depois que as vagas tiveram tempo de abrir, um evento
+    # que segue "sem vaga" por algumas rodadas e descartado da fila — aquela data
+    # nao tem plantao desse evento. Assim o robo para de gastar tempo/captcha com
+    # data morta e foca nas vagas que existem de verdade.
+    #
+    # A carencia e ancorada nas 6h00 (quando o lote abre), NAO no inicio da rodada.
+    # Antes ela contava a partir das 5h58 e expirava as 6h01 — mas em 10/09 o site
+    # so publicou as datas ~6h02 e ainda devolveu 500 + telas vazias. Resultado:
+    # 4 eventos descartados como "data morta" e uma vaga real (35 ZE 15/09, 4
+    # postos) perdida com 5 minutos de janela sobrando.
+    _grace = int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
+    _agora_br = datetime.now() - timedelta(hours=3)
+    _seg_ate_6h = 0.0
+    if _agora_br.hour < 6:
+        _abertura = _agora_br.replace(hour=6, minute=0, second=0, microsecond=0)
+        _seg_ate_6h = max(0.0, (_abertura - _agora_br).total_seconds())
+    dead_grace_deadline = time.monotonic() + _seg_ate_6h + _grace
+    if _seg_ate_6h:
+        _log("INFO", f"Corte de datas mortas so vale a partir de 6h00 + {_grace}s "
+                     f"(faltam {_seg_ate_6h:.0f}s para a abertura).")
     dead_drop_after = max(1, int(os.getenv("BATCH_DEAD_DROP_AFTER", "2")))
     dead_rounds: dict[int, int] = {}
     # Eventos cuja vaga JA apareceu de verdade (clicamos 'Eu Vou'). Nunca podem ser
@@ -3071,9 +3105,17 @@ def run_batch_events(
                     # Passado o grace (vagas ja tiveram tempo de abrir), conta as
                     # rodadas sem vaga; se persistir, descarta (data morta) e libera
                     # a fila. Antes do grace, insiste sempre (vaga pode estar abrindo).
+                    # Tela vazia (nenhuma linha 'Eu Vou', nem de outros eventos) e
+                    # site engasgando, nao data sem plantao — nao conta rodada morta.
+                    if is_empty_page_error(last_error):
+                        _log(
+                            "INFO",
+                            f"Evento {index}/{len(events)}: o site devolveu tela vazia; "
+                            f"nao conta como data morta. Segue na fila.",
+                        )
                     # Se a vaga desse evento JA apareceu antes, nao e data morta:
                     # o site so esta instavel. Mantem na fila ate a janela acabar.
-                    if time.monotonic() >= dead_grace_deadline and index not in seen_alive:
+                    elif time.monotonic() >= dead_grace_deadline and index not in seen_alive:
                         dead_rounds[index] = dead_rounds.get(index, 0) + 1
                         if dead_rounds[index] >= dead_drop_after:
                             no_action_total += 1
