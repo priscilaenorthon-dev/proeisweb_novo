@@ -154,9 +154,30 @@ Agora `ProeisHTTP.extract_site_feedback()` tira o boilerplate e loga: mensagens 
 - alvo **sumiu** → outro voluntário levou a vaga (corrida), insistir não adianta.
 Na próxima quinta, **ler esses `[diagnostico]` no log** antes de decidir qualquer nova melhoria.
 
+### Rodada de 10/09 — 1 marcada, 1 titular perdida (tela vazia)
+Marcou só `35 ZE 19/09`. Descartou 4 eventos como "data morta" — e um deles (35 ZE
+**15/09, 4 postos titular**) tinha vaga de verdade. Usou 295s de 600s: desistiu com
+5 min de janela sobrando. Duas causas, **ambas corrigidas** (commit `405c328`):
+1. A carência do corte de datas mortas contava do **início da rodada** (5h58+180s →
+   expirava 6h01), mas o site só publicou as datas ~6h02 (depois de 4 erros 500).
+   Agora é ancorada nas **6h00** (6h00+180s = 6h03).
+2. **Tela vazia** (nenhuma linha "Eu Vou", nem de outros eventos) contava como rodada
+   morta. É o site engasgando, não ausência de plantão — quando a data realmente não
+   tem vaga, a tela volta com as vagas dos OUTROS eventos. Agora `choose_target_event`
+   marca com `PAGINA_VAZIA_MARCA` e `is_empty_page_error()` faz o lote não contar.
+
+## ⚠️ Robô agendado IGNORA evento sem data (pegadinha)
+`_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
+com data em branco gera ZERO sub-eventos e some da rodada, sem aviso**. No botão
+**Executar** do app é diferente: lá em branco funciona (varre e acha a primeira data).
+Em 09/09 dois eventos estavam assim e iam ser ignorados em silêncio. **Sempre conferir
+se todo evento tem data antes da quinta.**
+
 ## Testes (rodar antes de qualquer deploy)
 - `python3 tests/test_vaga_viva.py` — vaga comprovada não vira "data morta" e insiste mais.
 - `python3 tests/test_diagnostico_recusa.py` — os 3 cenários de recusa ficam distinguíveis no log.
+- `python3 tests/test_tela_vazia.py` — tela vazia do site não vira "data morta".
+- Dependências não vêm no container: `pip install -q beautifulsoup4 requests`.
 
 ## Como o usuário volta a este projeto
 Este repo + ambiente é o "projeto CPROEIS". Basta abrir uma sessão nova neste
