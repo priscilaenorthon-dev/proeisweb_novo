@@ -9,6 +9,10 @@ retrain_log*.txt
 *.log
 # token OAuth (symlink para scratchpad) — NUNCA versionar:
 user_token.txt
+# Backups temporarios do modelo em producao (feitos antes de retreinar):
+*.prodbak
+*.prev.pt
+
 # O modelo servido em producao PRECISA ir para o container (excecoes ao *.onnx acima):
 !model.onnx
 !model.onnx.data
