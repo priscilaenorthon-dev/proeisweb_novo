@@ -188,8 +188,12 @@ Três problemas reais encontrados, **todos corrigidos** (ver abaixo):
    fim com marcador `[N linhas omitidas no meio]`. Env: `LOG_HEAD_RATIO` (0.6),
    `LOG_KEY_MAX_LINES` (600).
 2. **Travessa de data + auditoria** (`proeis_http.py`): `page_selected_date()` lê a data
-   que o site mostra como selecionada e `choose_target_event` **se recusa a clicar** se
-   não for a data pedida (erro comum → refaz o filtro, não conta como "sem vaga").
+   que o site mostra como selecionada. A conferência roda em DOIS pontos: em `fill_filters`
+   logo após filtrar (loga `[data-tela] confere/DIVERGENCIA/nao deu para ler` em toda
+   filtragem) e de novo em `choose_target_event` antes do clique — ambos **se recusam a
+   usar a tela** se não for a data pedida (erro comum → refaz o filtro, não conta como
+   "sem vaga"). Validado contra o site real em 29/10: 35 filtragens, 35 `confere`,
+   0 divergência, 0 falso positivo.
    Depois do sucesso, `audit_marking()` lê a lista oficial de marcados e loga
    `[auditoria] OK` ou `[auditoria] DIVERGENCIA` com a data real. Env: `CHECK_PAGE_DATE`,
    `AUDIT_MARKING`. Helpers novos: `extract_iso_date()`, `same_site_date()`.
