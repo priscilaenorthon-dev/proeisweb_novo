@@ -2052,6 +2052,17 @@ class ProeisHTTP:
                 detail += " " + PAGINA_VAZIA_MARCA
             raise AutomationError(f"Nao encontrei a linha exata do evento solicitado.{detail}")
         chosen = filtered[0]
+        # TRAVESSA DE DATA: nao clicar numa tela que nao e da data pedida.
+        # Sem isso o robo pode marcar plantao em dia errado e registrar o dia
+        # certo no log (foi o que aconteceu em 29/10: log 08/11, site 06/11).
+        if data_evento and os.getenv("CHECK_PAGE_DATE", "1") in ("1", "true", "yes"):
+            pagina_data = self.page_selected_date(soup)
+            if pagina_data and not same_site_date(pagina_data, data_evento):
+                raise AutomationError(
+                    f"Tela carregada e da data {pagina_data}, mas o evento pedido e "
+                    f"{data_evento}. Nao vou clicar para nao marcar plantao em data "
+                    f"errada; vou refazer o filtro."
+                )
         for pos, candidate in enumerate(filtered[:5], 1):
             match_score = self.event_match_score(candidate.label, nome_evento, hora_evento, turno, endereco)
             _log("VAGA", f"Candidato filtrado #{pos}: match={match_score} vaga={candidate.score} | {candidate.label[:140]}")
@@ -2093,6 +2104,9 @@ class ProeisHTTP:
         if success:
             self.report_good_captcha()
             emit_vaga(chosen.label, data_evento=data_evento, acao="Clicado Eu vou")
+            # Auditoria: confere na lista oficial de marcados QUAL data o site
+            # gravou de fato. So loga — nunca desfaz uma marcacao conquistada.
+            self.audit_marking(nome_evento, data_evento, hora_evento)
         return success
 
     def event_matches(self, label: str, nome_evento: str, hora_evento: str, turno: str, endereco: str) -> bool:
@@ -2479,6 +2493,81 @@ class ProeisHTTP:
         except Exception:
             return False
 
+    def page_selected_date(self, soup: BeautifulSoup) -> str:
+        """Le a data que o PROEIS mostra como SELECIONADA no filtro da tela atual.
+
+        Serve de travessa de seguranca antes do clique em 'Eu Vou': se a tela
+        carregada nao for da data pedida, clicar marca plantao em dia errado.
+        Em 29/10 o robo registrou 08/11 22:00 como confirmado e o site gravou
+        06/11 22:00 — o clique caiu numa tela que nao era a data pedida.
+        Devolve "" quando nao da para saber (nunca inventa).
+        """
+        try:
+            select = soup.select_one("#ddlDataEvento")
+            if select is None:
+                for control in soup.select("select[name]"):
+                    key = norm(" ".join([control.get("id", ""), control.get("name", "")]))
+                    if "data" in key and "evento" in key:
+                        select = control
+                        break
+            if select is None:
+                return ""
+            option = select.select_one("option[selected]")
+            if option is None:
+                return ""
+            return extract_iso_date(
+                " ".join([option.get("value", ""), option.get_text(" ", strip=True)])
+            )
+        except Exception:
+            return ""
+
+    def audit_marking(self, nome_evento: str, data_evento: str = "", hora_evento: str = "") -> str:
+        """Confere na lista de marcados QUAL data/hora o site realmente gravou.
+
+        O site responder "incluida com sucesso" nao prova que gravou a data que
+        pedimos. Esta auditoria le a lista oficial do voluntario e loga a data
+        real; se divergir da pedida, grita no log em vez de registrar errado.
+        Devolve a data/hora real encontrada ("" se nao conseguiu auditar).
+        """
+        if os.getenv("AUDIT_MARKING", "1") not in ("1", "true", "yes"):
+            return ""
+        nome_n = norm(nome_evento)
+        if not nome_n:
+            return ""
+        try:
+            soup = self.request("GET", MENU_URL)
+            ta = soup.select_one("#txtEveVoluntario")
+            raw = ta.get_text("\n", strip=True) if ta else ""
+            if not raw:
+                _log("VAGA", "[auditoria] lista de marcados veio vazia; nao deu para auditar a data.")
+                return ""
+            achados: list[str] = []
+            for block in re.split(r"={4,}", raw):
+                if nome_n not in norm(block):
+                    continue
+                for line in block.splitlines():
+                    if ":" in line and ("data" in norm(line.partition(":")[0]) or "hora" in norm(line.partition(":")[0])):
+                        valor = line.partition(":")[2].strip()
+                        if extract_iso_date(valor):
+                            achados.append(valor)
+            if not achados:
+                _log("VAGA", f"[auditoria] '{nome_evento}' nao apareceu na lista de marcados (ainda).")
+                return ""
+            alvo = [v for v in achados if not data_evento or same_site_date(v, data_evento)]
+            if alvo:
+                _log("VAGA", f"[auditoria] OK: site gravou '{nome_evento}' em {alvo[0]} (data pedida: {data_evento or 'livre'}).")
+                return alvo[0]
+            _log(
+                "VAGA",
+                f"[auditoria] DIVERGENCIA: pedimos {data_evento} {hora_evento} para "
+                f"'{nome_evento}', mas na lista de marcados desse evento so aparece: "
+                f"{', '.join(achados[:6])}. O clique caiu em outra data/tela.",
+            )
+            return achados[0]
+        except Exception as exc:
+            _log("VAGA", f"[auditoria] falhou ao conferir a lista de marcados: {exc}")
+            return ""
+
 
 # â"€â"€ Helpers globais â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -2522,6 +2611,25 @@ def normalize_date_for_site(value: str) -> str:
         except ValueError:
             pass
     return value
+
+
+def extract_iso_date(text: str) -> str:
+    """Tira a data de um texto do site em qualquer formato e devolve YYYY-MM-DD."""
+    if not text:
+        return ""
+    m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", text)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.search(r"\b(\d{2})/(\d{2})/(\d{4})\b", text)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return ""
+
+
+def same_site_date(a: str, b: str) -> bool:
+    """True quando as duas datas sao o mesmo dia, em qualquer formato."""
+    ia, ib = extract_iso_date(a) or normalize_date_for_site(a), extract_iso_date(b) or normalize_date_for_site(b)
+    return bool(ia) and ia == ib
 
 
 def format_elapsed(seconds: float) -> str:
@@ -3029,6 +3137,15 @@ def run_batch_events(
                      f"(faltam {_seg_ate_6h:.0f}s para a abertura).")
     dead_drop_after = max(1, int(os.getenv("BATCH_DEAD_DROP_AFTER", "2")))
     dead_rounds: dict[int, int] = {}
+    # Datas cortadas como "sem plantao" ficam guardadas: se sobrar janela e os
+    # pendentes estiverem travados em tela vazia, elas voltam para a fila.
+    # Em 29/10 as 20 tentativas foram todas em duas datas que o site devolvia
+    # em branco, enquanto a vaga titular de MOTO PATRULHA 02/11 — cortada as
+    # ~6h03 — apareceu depois no site e ninguem voltou para pegar.
+    dropped: dict[int, dict[str, Any]] = {}
+    revive_max = max(0, int(os.getenv("BATCH_DEAD_REVIVE_MAX", "3")))
+    revive_min_remaining = max(0, int(os.getenv("BATCH_DEAD_REVIVE_MIN_REMAINING", "60")))
+    revives_done = 0
     # Eventos cuja vaga JA apareceu de verdade (clicamos 'Eu Vou'). Nunca podem ser
     # descartados como "data morta": a vaga existe, o site e que recusou.
     seen_alive: set[int] = set()
@@ -3120,12 +3237,13 @@ def run_batch_events(
                         if dead_rounds[index] >= dead_drop_after:
                             no_action_total += 1
                             event_status[index] = "sem vaga (data sem plantao)"
+                            dropped[index] = event
                             _log(
                                 "INFO",
                                 f"Evento {index}/{len(events)} descartado da fila: sem vaga em "
                                 f"{dead_rounds[index]} rodada(s) apos a abertura das 6h "
                                 f"(data provavelmente sem plantao desse evento). "
-                                f"Foco nas vagas que existem.",
+                                f"Foco nas vagas que existem — volta na fila se sobrar janela.",
                             )
                             continue
                     event_status[index] = "pendente"
@@ -3170,21 +3288,34 @@ def run_batch_events(
                     f"nome='{event['nome_evento']}' data='{event['data_evento']}' hora='{event['hora_evento']}' erro='{last_error}'",
                 )
 
-        # Eventos com vaga comprovada vao para a frente da fila: se a janela acabar,
-        # que acabe nos eventos duvidosos, nunca numa vaga que sabemos que existe.
-        if seen_alive:
+        # Ordem da proxima varredura:
+        #   1) vaga comprovada  2) demais  3) travados em tela vazia.
+        # Se a janela acabar, que acabe num evento travado no site engasgado e
+        # nunca numa vaga que sabemos que existe. Mandar a tela vazia para o fim
+        # tambem impede que ela monopolize as tentativas da rodada, que foi o
+        # que aconteceu em 29/10 (20 tentativas em 2 datas em branco).
+        if next_pending:
+            vazio_idx = {
+                i for i, _ in next_pending
+                if i not in seen_alive and is_empty_page_error(event_last_error.get(i, ""))
+            }
             alive = [item for item in next_pending if item[0] in seen_alive]
-            rest = [item for item in next_pending if item[0] not in seen_alive]
-            if alive and rest:
+            vazios = [item for item in next_pending if item[0] in vazio_idx]
+            rest = [item for item in next_pending if item[0] not in seen_alive and item[0] not in vazio_idx]
+            if alive and (rest or vazios):
                 _log(
                     "INFO",
                     f"Priorizando {len(alive)} evento(s) com vaga comprovada na proxima varredura.",
                 )
-            next_pending = alive + rest
+            if vazios and (alive or rest):
+                _log(
+                    "INFO",
+                    f"Mandando {len(vazios)} evento(s) travado(s) em tela vazia para o fim da "
+                    f"fila: o site esta engasgado nessas datas, as outras levam a vez.",
+                )
+            next_pending = alive + rest + vazios
 
         pending = next_pending
-        if not pending:
-            break
         if deadline is None:
             break
 
@@ -3192,6 +3323,40 @@ def run_batch_events(
             consecutive_no_action_rounds += 1
         else:
             consecutive_no_action_rounds = 0
+
+        # Re-admissao das datas cortadas: sobrou janela e nao ha mais nada util
+        # a tentar (fila vazia ou so eventos travados em tela vazia)? Entao as
+        # datas descartadas como "sem plantao" merecem outra chance — o site
+        # pode ter publicado as vagas depois do corte. Em 29/10 a vaga titular
+        # de MOTO PATRULHA 02/11 apareceu no site depois de a data ser cortada
+        # as ~6h03 e o robo nunca voltou nela: ficou 5 minutos batendo em duas
+        # datas que o site devolvia em branco.
+        remaining_now = int(deadline - time.monotonic())
+        if (
+            dropped
+            and revives_done < revive_max
+            and remaining_now >= revive_min_remaining
+            and all(is_empty_page_error(event_last_error.get(i, "")) for i, _ in pending)
+        ):
+            revives_done += 1
+            voltando = sorted(dropped.items())
+            for index, _event in voltando:
+                dead_rounds[index] = 0
+                event_status[index] = "pendente"
+                no_action_total = max(0, no_action_total - 1)
+            pending = pending + voltando
+            _log(
+                "INFO",
+                f"Re-admitindo {len(voltando)} data(s) descartada(s) na fila "
+                f"(re-admissao {revives_done}/{revive_max}): restam {remaining_now}s de "
+                f"janela e os pendentes estao travados em tela vazia. A vaga pode ter "
+                f"sido publicada depois do corte.",
+            )
+            dropped = {}
+            consecutive_no_action_rounds = 0
+
+        if not pending:
+            break
 
         if (
             batch_max_no_action_rounds > 0

@@ -166,6 +166,39 @@ Marcou só `35 ZE 19/09`. Descartou 4 eventos como "data morta" — e um deles (
    tem vaga, a tela volta com as vagas dos OUTROS eventos. Agora `choose_target_event`
    marca com `PAGINA_VAZIA_MARCA` e `is_empty_page_error()` faz o lote não contar.
 
+### Rodada de 29/10 (quinta) — 4 marcadas, MELHOR resultado até hoje
+Marcou 4 titular do lote 02–08/11: **RAS SÃO FIDÉLIS 04/11 22h, 06/11 22h, 07/11 14h,
+08/11 06h** (+ a MOTO PATRULHA 01/11 13h da semana anterior = 5 no total, todas TITULAR).
+Captcha: **0 recusados, 0 Gemini** — a IA não falhou nenhuma vez. 23.901 linhas de log.
+Três problemas reais encontrados, **todos corrigidos** (ver abaixo):
+1. **Log cortado:** o cap de 800KB guardava só a CAUDA; o log salvo começava às 6h05 e
+   justamente as 4 marcações (6h00–6h05) ficaram de fora. Não deu pra provar horário.
+2. **Data errada:** o log disse `08/11 22:00 confirmado`, mas o site gravou **06/11 22:00**.
+   O clique caiu numa tela que não era a data pedida (VIEWSTATE/tela velha).
+3. **Tempo mal gasto (o pior):** 20 tentativas foram todas em 06/11 e 07/11, que o site
+   devolvia **em branco** (170 telas vazias, 9 quedas de conexão), enquanto a data 02/11
+   — cortada como "data sem plantão" às ~6h03 com 6 tentativas — publicou a vaga
+   **MOTO PATRULHA 02/11 13:00 titular** DEPOIS do corte. Ninguém voltou nela.
+   Também escaparam 3 titular visíveis em 07/11 (RAS 06h, MOTO 13h, RAS 22h).
+
+### Correções de 29/10 (as três)
+1. **Log guarda começo + fim + linhas-chave** (`_log_excerpt`/`_log_head_tail` em
+   `api/index.py`): bloco `=== LINHAS-CHAVE ===` no topo (marcação, `[diagnostico]`,
+   `[auditoria]`, resumo por evento — nunca se perdem), depois 60% do começo e 40% do
+   fim com marcador `[N linhas omitidas no meio]`. Env: `LOG_HEAD_RATIO` (0.6),
+   `LOG_KEY_MAX_LINES` (600).
+2. **Travessa de data + auditoria** (`proeis_http.py`): `page_selected_date()` lê a data
+   que o site mostra como selecionada e `choose_target_event` **se recusa a clicar** se
+   não for a data pedida (erro comum → refaz o filtro, não conta como "sem vaga").
+   Depois do sucesso, `audit_marking()` lê a lista oficial de marcados e loga
+   `[auditoria] OK` ou `[auditoria] DIVERGENCIA` com a data real. Env: `CHECK_PAGE_DATE`,
+   `AUDIT_MARKING`. Helpers novos: `extract_iso_date()`, `same_site_date()`.
+3. **Rotação justa + re-admissão de datas** (`run_batch_events`): a fila agora é
+   `vaga comprovada → demais → travados em tela vazia` (tela vazia vai pro fim, não
+   monopoliza a rodada); e quando sobra janela e só restam eventos travados em tela
+   vazia, as datas cortadas **voltam pra fila** (`Re-admitindo ...`). Env:
+   `BATCH_DEAD_REVIVE_MAX` (3), `BATCH_DEAD_REVIVE_MIN_REMAINING` (60s).
+
 ## ⚠️ Robô agendado IGNORA evento sem data (pegadinha)
 `_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
 com data em branco gera ZERO sub-eventos e some da rodada, sem aviso**. No botão
@@ -177,7 +210,12 @@ se todo evento tem data antes da quinta.**
 - `python3 tests/test_vaga_viva.py` — vaga comprovada não vira "data morta" e insiste mais.
 - `python3 tests/test_diagnostico_recusa.py` — os 3 cenários de recusa ficam distinguíveis no log.
 - `python3 tests/test_tela_vazia.py` — tela vazia do site não vira "data morta".
-- Dependências não vêm no container: `pip install -q beautifulsoup4 requests`.
+- `python3 tests/test_log_recorte.py` — log de 24k linhas mantém as marcações das 6h.
+- `python3 tests/test_data_errada.py` — não clica em tela de data errada; auditoria pega a divergência.
+- `python3 tests/test_readmissao_datas.py` — data cortada volta pra fila e pega vaga publicada atrasado.
+- Dependências não vêm no container:
+  `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
+  (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).
 
 ## Como o usuário volta a este projeto
 Este repo + ambiente é o "projeto CPROEIS". Basta abrir uma sessão nova neste

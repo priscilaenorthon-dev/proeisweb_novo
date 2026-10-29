@@ -507,6 +507,79 @@ def _stored_events() -> list[dict[str, Any]]:
     query = _events_collection().order_by("created_at")
     return [_doc_to_event(doc) for doc in query.stream()]
 
+# Linhas que NUNCA podem ser perdidas no corte do log: sao elas que provam o
+# que o robo fez (horario de cada marcacao, diagnostico da recusa, resumo).
+_LOG_KEY_PATTERN = re.compile(
+    r"Clicando em 'Eu Vou'"
+    r"|Clicado Eu vou"
+    r"|MARCACAO CONFIRMADA"
+    r"|Marcacao confirmada"
+    r"|Confirmacao de sucesso NAO encontrada"
+    r"|\[diagnostico\]"
+    r"|\[auditoria\]"
+    r"|\[tela-vazia\]"
+    r"|Evento \d+/\d+ \["
+    r"|Marcacao agrupada finalizada"
+    r"|Robo agendado"
+    r"|descartado da fila"
+    r"|Re-admitindo"
+    r"|vaga TITULAR existe"
+    r"|Priorizando"
+    r"|Virada das 6h"
+)
+
+
+def _log_head_tail(lines: list[str], max_lines: int, max_bytes: int) -> str:
+    """Recorta o log mantendo o COMECO e o FIM (antes guardava so o fim).
+
+    Em 29/10 a rodada gerou 23.901 linhas: o corte por cauda salvou apenas de
+    6h05 em diante e justamente as 4 marcacoes (6h00-6h05) ficaram de fora,
+    tornando impossivel provar o horario de cada vaga marcada.
+    """
+    ratio = min(0.95, max(0.05, float(os.getenv("LOG_HEAD_RATIO", "0.6"))))
+    total = len(lines)
+    text = "\n".join(lines)
+    while True:
+        if total <= max_lines:
+            text = "\n".join(lines)
+        else:
+            head_n = max(1, int(max_lines * ratio))
+            tail_n = max(1, max_lines - head_n)
+            omitted = total - head_n - tail_n
+            text = "\n".join(
+                lines[:head_n]
+                + [f"... [{omitted} linha(s) omitida(s) no meio pelo limite de log] ..."]
+                + lines[-tail_n:]
+            )
+        if len(text.encode("utf-8")) <= max_bytes or max_lines <= 200:
+            break
+        max_lines = int(max_lines * 0.8)
+    enc = text.encode("utf-8")
+    if len(enc) > max_bytes:
+        half = max_bytes // 2
+        text = (
+            enc[:half].decode("utf-8", "ignore")
+            + "\n... [corte por tamanho] ...\n"
+            + enc[-half:].decode("utf-8", "ignore")
+        )
+    return text
+
+
+def _log_excerpt(lines: list[str], max_lines: int, max_bytes: int) -> str:
+    """Bloco de linhas-chave + comeco/fim do log, dentro do teto de bytes."""
+    key_lines = [line for line in lines if _LOG_KEY_PATTERN.search(line)]
+    key_block = ""
+    if key_lines:
+        kept = key_lines[-int(os.getenv("LOG_KEY_MAX_LINES", "600")):]
+        key_block = "\n".join(
+            [f"=== LINHAS-CHAVE ({len(kept)} de {len(key_lines)}) — sempre preservadas ==="]
+            + kept
+            + ["=== FIM DAS LINHAS-CHAVE; abaixo o log cru ===", ""]
+        )
+    budget = max(1000, max_bytes - len(key_block.encode("utf-8")))
+    return key_block + _log_head_tail(lines, max_lines, budget)
+
+
 def _save_operation_log(
     op_id: str,
     kind: str,
@@ -516,15 +589,11 @@ def _save_operation_log(
     result: dict[str, Any],
 ) -> None:
     try:
-        # Guarda as ultimas N linhas (default 8000, cobre um run inteiro das 6h
-        # com todas as re-tentativas) — pra dar pra estudar o log completo.
+        # Guarda comeco + fim + linhas-chave (default 8000 linhas / 800 KB).
         # Cap por bytes garante que nao estoura o teto de 1 MiB do doc Firestore.
         max_lines = int(os.getenv("LOG_MAX_LINES", "8000"))
-        content = "\n".join(lines[-max_lines:])
         max_bytes = int(os.getenv("LOG_MAX_BYTES", "800000"))
-        enc = content.encode("utf-8")
-        if len(enc) > max_bytes:
-            content = enc[-max_bytes:].decode("utf-8", "ignore")
+        content = _log_excerpt(lines, max_lines, max_bytes)
         now_dt = datetime.now(timezone.utc)
         _logs_collection().document(op_id).set({
             "op_id": op_id,
