@@ -1358,6 +1358,22 @@ class ProeisHTTP:
                 continue
             _log("FILTRO", "Filtros aplicados com sucesso.")
             self.report_good_captcha()
+            # Confere logo aqui em que data a tela realmente abriu. E a origem do
+            # bug de 29/10 (pedimos 08/11, o site gravou 06/11): se a tela voltar
+            # de outro dia, melhor refazer o filtro do que marcar no dia errado.
+            pagina_data = self.page_selected_date(soup)
+            if not pagina_data:
+                _log("FILTRO", "[data-tela] nao deu para ler a data selecionada na tela (sem bloqueio).")
+            elif same_site_date(pagina_data, data_evento):
+                _log("FILTRO", f"[data-tela] confere: tela aberta na data {pagina_data}.")
+            else:
+                _log("FILTRO", f"[data-tela] DIVERGENCIA: pedimos {data_evento} e a tela voltou "
+                               f"em {pagina_data}. Refazendo o filtro.")
+                if os.getenv("CHECK_PAGE_DATE", "1") in ("1", "true", "yes"):
+                    raise AutomationError(
+                        f"Filtro voltou na data {pagina_data} em vez de {data_evento}; "
+                        f"nao vou usar esta tela para nao marcar em data errada."
+                    )
             return
         raise AutomationError("Captcha do filtro falhou em todas as tentativas.")
 
