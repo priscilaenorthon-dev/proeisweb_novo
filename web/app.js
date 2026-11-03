@@ -1613,6 +1613,7 @@ function _applySessionStatus(sess) {
 let _sessionPollTimer = null;
 let _sessionKeepAliveTimer = null;
 let _sessionKeepAliveInFlight = false;
+let _sessionVisibilityBound = false;
 
 async function _pollSessionUntilLoggedIn(attempts = 0) {
   if (attempts >= 12) return; // desiste apos ~24s
@@ -1658,12 +1659,28 @@ async function _keepSessionAlive() {
 
 function startSessionKeepAlive(runNow = false) {
   if (_sessionKeepAliveTimer) clearInterval(_sessionKeepAliveTimer);
-  _sessionKeepAliveTimer = setInterval(() => _keepSessionAlive(), 45000);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) _keepSessionAlive();
-  });
-  window.addEventListener('focus', () => _keepSessionAlive());
-  if (runNow) _keepSessionAlive();
+  // So bate no servidor com a aba em primeiro plano. Com a aba esquecida aberta,
+  // o ping de 45s mantinha a instancia do Cloud Run acordada 24h por dia:
+  // ~1.500 requisicoes/dia em /api/session-status (~R$29/mes, medido em 03/11).
+  // A sessao do PROEIS antes das 6h de quinta e mantida pelos aquecimentos do
+  // Cloud Scheduler (5h47/5h52/5h55), nao por esta aba.
+  _sessionKeepAliveTimer = setInterval(() => {
+    if (document.hidden) return;
+    _keepSessionAlive();
+  }, 45000);
+  // Os listeners sao registrados UMA vez: antes, cada chamada desta funcao
+  // empilhava um listener novo (o clearInterval nao os removia).
+  if (!_sessionVisibilityBound) {
+    _sessionVisibilityBound = true;
+    // Ao voltar para a aba, atualiza na hora em vez de esperar os 45s.
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) _keepSessionAlive();
+    });
+    window.addEventListener('focus', () => {
+      if (!document.hidden) _keepSessionAlive();
+    });
+  }
+  if (runNow && !document.hidden) _keepSessionAlive();
 }
 
 async function checkApiStatus() {

@@ -230,6 +230,32 @@ Cada quinta abre **segunda a domingo da semana seguinte**. Histórico: 29/10 →
 05/11 → 09–15/11. **Antes de cada quinta, trocar as datas dos eventos para o lote novo** —
 datas do lote velho fazem o robô rodar 28 sub-eventos em dias que não têm mais nada.
 
+## 💰 Custo: a ABA ABERTA era o maior gasto (corrigido 03/11)
+`startSessionKeepAlive()` (web/app.js) pingava o servidor **de 45 em 45 segundos para
+sempre**. Com o app esquecido aberto numa aba, isso dava **~1.500 requisições/dia** em
+`/api/session-status` (medido: 293 de 300 entradas do log de requisições vinham de um
+único PC Windows), mantendo a instância do Cloud Run acordada 24h/dia — **~R$29/mês**,
+num projeto cujo robô sozinho custa **~R$2,40/mês**. Era o mesmo efeito do "sempre
+ligado" que cortamos em 15/10, recriado pelo navegador.
+Agora o tique é ignorado quando `document.hidden`, e ao voltar para a aba atualiza na
+hora. Os listeners passaram a ser registrados uma única vez (antes cada chamada da
+função empilhava um novo). A sessão do PROEIS antes das 6h continua garantida pelos
+aquecimentos do Scheduler (5h47/52/55) — **não** por esta aba.
+
+### Como medir custo sem API de fatura
+O Google **não expõe fatura/custo em API** (todos os endpoints de `invoices`/`costs` dão
+404; não há métrica de custo no Monitoring). O único caminho programático é o export pro
+BigQuery (dataset `billing_export` já criado; falta o dono ligar no painel). Enquanto
+isso, medir assim:
+- consumo: Monitoring `run.googleapis.com/container/cpu/allocation_time` e
+  `.../memory/allocation_time` (somar com `ALIGN_SUM` + `REDUCE_SUM`);
+- preços em BRL: `cloudbilling.googleapis.com/v1/services/<id>/skus?currencyCode=BRL`
+  (Cloud Run = `152E-C115-5142`; SKUs *Services CPU/Memory Tier 2 (Request-based)*:
+  **R$0,000199279/vCPU-s** e **R$0,000020758/GiB-s** em southamerica-east1);
+- quem está chamando: Cloud Logging, `httpRequest.requestUrl` + `userAgent` + `remoteIp`.
+Fatura em aberto/atraso: não há API. Sinal confiável de atraso é o Google **desligar** o
+faturamento (foi o que houve em 08/10: APIs 403, app 503, rodada da quinta perdida).
+
 ## Testes (rodar antes de qualquer deploy)
 - `python3 tests/test_vaga_viva.py` — vaga comprovada não vira "data morta" e insiste mais.
 - `python3 tests/test_diagnostico_recusa.py` — os 3 cenários de recusa ficam distinguíveis no log.
@@ -238,6 +264,7 @@ datas do lote velho fazem o robô rodar 28 sub-eventos em dias que não têm mai
 - `python3 tests/test_data_errada.py` — não clica em tela de data errada; auditoria pega a divergência.
 - `python3 tests/test_readmissao_datas.py` — data cortada volta pra fila e pega vaga publicada atrasado.
 - `python3 tests/test_evento_sem_data.py` — evento sem data (ou com datas vencidas) gera AVISO, não silêncio.
+- `node tests/test_aba_escondida.js` — aba em segundo plano para de pingar o servidor (Playwright, já instalado).
 - Dependências não vêm no container:
   `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
   (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).
