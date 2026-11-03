@@ -519,6 +519,7 @@ _LOG_KEY_PATTERN = re.compile(
     r"|\[auditoria\]"
     r"|\[tela-vazia\]"
     r"|Evento \d+/\d+ \["
+    r"|\[AVISO\]"
     r"|Marcacao agrupada finalizada"
     r"|Robo agendado"
     r"|descartado da fila"
@@ -1222,11 +1223,17 @@ def _iso_or_none(value: str) -> Optional[str]:
     return None
 
 
-def _scheduled_run_requests() -> list[RunRequest]:
+def _scheduled_run_requests() -> tuple[list[RunRequest], list[str]]:
     """Le os eventos cadastrados no Firestore e os expande em RunRequests
     (uma por data x hora), igual ao expandEventForRun do front. Mantem apenas
     datas de hoje em diante (fuso de Brasilia, UTC-3), pra nao tentar data passada.
-    Credenciais ficam vazias -> o endpoint usa as variaveis de ambiente."""
+    Credenciais ficam vazias -> o endpoint usa as variaveis de ambiente.
+
+    Devolve tambem a lista de eventos IGNORADOS e o motivo. Antes o descarte era
+    silencioso: evento com data em branco gera zero sub-eventos e desaparecia da
+    rodada sem nenhum aviso (no botao Executar a data em branco funciona, porque
+    lah o robo varre as datas). Em 03/11 os 7 eventos estavam assim e a rodada de
+    quinta ia marcar ZERO devolvendo `ok: true`, parecendo normal."""
     tz = timezone(timedelta(hours=-3))
     today = datetime.now(tz).date().isoformat()
     # O robo casa a vaga por NOME + HORA (unicos por evento). O endereco NAO entra
@@ -1236,9 +1243,18 @@ def _scheduled_run_requests() -> list[RunRequest]:
     # de marcar. Para reativar, defina SCHEDULED_MATCH_ENDERECO=1.
     use_endereco = os.getenv("SCHEDULED_MATCH_ENDERECO", "0") in ("1", "true", "yes")
     reqs: list[RunRequest] = []
+    ignorados: list[str] = []
     for ev in _stored_events():
+        rotulo = f"'{str(ev.get('nome_evento', '')) or '(sem nome)'}' hora={str(ev.get('hora_evento', '')) or 'livre'}"
         dates = [d.strip() for d in str(ev.get("data_evento", "")).split(",") if d.strip()]
         times = [t.strip() for t in str(ev.get("hora_evento", "")).split(",") if t.strip()] or [""]
+        if not dates:
+            ignorados.append(
+                f"{rotulo}: SEM DATA cadastrada — o robo agendado IGNORA. "
+                f"Cadastre as datas do lote no app."
+            )
+            continue
+        antes = len(reqs)
         for raw_date in dates:
             iso = _iso_or_none(raw_date)
             if iso is None or iso < today:
@@ -1254,7 +1270,12 @@ def _scheduled_run_requests() -> list[RunRequest]:
                     hora_evento=hora,
                     scan_rounds=1,
                 ))
-    return reqs
+        if len(reqs) == antes:
+            ignorados.append(
+                f"{rotulo}: todas as {len(dates)} data(s) cadastradas ja passaram "
+                f"(hoje e {today}) — o robo agendado IGNORA. Atualize para as datas do lote novo."
+            )
+    return reqs, ignorados
 
 
 @app.post("/api/run-scheduled")
@@ -1275,10 +1296,30 @@ async def run_scheduled(request: Request):
     if not (login_val and password_val and gemini_key):
         raise HTTPException(status_code=500, detail="Credenciais PROEIS/GEMINI nao configuradas no servico.")
 
-    reqs = _scheduled_run_requests()
+    reqs, ignorados = _scheduled_run_requests()
     if not reqs:
+        # Antes isto saia daqui SEM gravar log nenhum: o aviso das 6h09 lia o
+        # operation_logs e encontrava o log da semana ANTERIOR, podendo reportar
+        # o sucesso passado como se fosse o de hoje. Agora grava um log proprio
+        # com o motivo de cada evento ter sido ignorado.
+        if ignorados:
+            motivo = "Nenhum evento valido para esta rodada. " + " | ".join(ignorados)
+        else:
+            motivo = "Nenhum evento com data futura cadastrado."
+        op_id = uuid.uuid4().hex[:8]
+        linhas = ["[OP] Robo agendado NAO rodou: nenhum sub-evento valido.",
+                  f"[AVISO] {len(ignorados)} evento(s) ignorado(s):"]
+        linhas += [f"[AVISO]   - {m}" for m in ignorados]
+        linhas.append("[OP] Robo agendado encerrado: status=sem-eventos | confirmadas=0/0")
+        for linha in linhas:
+            print(linha)
+        _save_operation_log(
+            op_id, "run_scheduled", "sem-eventos", linhas,
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{op_id}_run_scheduled.log",
+            {"status": "sem-eventos", "confirmed": 0, "total": 0, "op_id": op_id, "message": motivo},
+        )
         return {"ok": True, "status": "sem-eventos", "confirmed": 0, "total": 0,
-                "message": "Nenhum evento com data futura cadastrado."}
+                "op_id": op_id, "avisos": len(ignorados), "message": motivo}
 
     # Modo teste (dry): ?dry=1 loga e varre mas NAO marca nada, e usa janela curta.
     # Serve pra validar o pipeline (login + varredura) sem risco de marcar vaga.
@@ -1317,6 +1358,11 @@ async def run_scheduled(request: Request):
         _account_enter()  # segura a conta ate o finally (bloqueia login paralelo)
         try:
             print(f"[OP] Robo agendado iniciado: id={op_id} | sub-eventos={len(events)} | janela={window}s | dry_run={dry_run}")
+            # Eventos cadastrados que NAO entraram na rodada: antes sumiam calados.
+            if ignorados:
+                print(f"[AVISO] {len(ignorados)} evento(s) cadastrado(s) ficaram FORA desta rodada:")
+                for motivo_ev in ignorados:
+                    print(f"[AVISO]   - {motivo_ev}")
             events.sort(key=lambda ev: (
                 ev.get("convenio", ""), ev.get("data_evento", ""), ev.get("cpa", ""),
                 ev.get("disponivel", ""), ev.get("hora_evento", ""), ev.get("nome_evento", ""),
@@ -1357,6 +1403,11 @@ async def run_scheduled(request: Request):
             _account_exit()
             try:
                 perf["total_ms"] = int((time.monotonic() - t_total) * 1000)
+                # Carrega os eventos ignorados para o resumo, senao o aviso das
+                # 6h09 (que le result.message) nao fica sabendo que ficaram fora.
+                if ignorados:
+                    aviso = f"ATENCAO: {len(ignorados)} evento(s) fora da rodada -> " + " | ".join(ignorados)
+                    result["message"] = f"{result.get('message', '')} {aviso}".strip()
                 print(f"[OP] Robo agendado encerrado: status={result['status']} | confirmadas={result['confirmed']}/{result['total']}")
             except BaseException:
                 pass

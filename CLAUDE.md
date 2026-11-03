@@ -203,12 +203,32 @@ Três problemas reais encontrados, **todos corrigidos** (ver abaixo):
    vazia, as datas cortadas **voltam pra fila** (`Re-admitindo ...`). Env:
    `BATCH_DEAD_REVIVE_MAX` (3), `BATCH_DEAD_REVIVE_MIN_REMAINING` (60s).
 
-## ⚠️ Robô agendado IGNORA evento sem data (pegadinha)
+## ⚠️ Robô agendado IGNORA evento sem data — agora com AVISO (corrigido 03/11)
 `_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
-com data em branco gera ZERO sub-eventos e some da rodada, sem aviso**. No botão
-**Executar** do app é diferente: lá em branco funciona (varre e acha a primeira data).
-Em 09/09 dois eventos estavam assim e iam ser ignorados em silêncio. **Sempre conferir
-se todo evento tem data antes da quinta.**
+com data em branco gera ZERO sub-eventos e some da rodada**. No botão **Executar** do
+app é diferente: lá em branco funciona (varre e acha a primeira data). O dono decidiu
+**não** fazer o robô agendado varrer — só avisar.
+
+Em 03/11 os **7 eventos estavam sem data** (limpos em 31/10 19h17): a rodada de 05/11
+ia marcar ZERO devolvendo `ok: true` com status `sem-eventos`, **sem nem fazer login**.
+E pior: aquele caminho saía **sem gravar log**, então o aviso das 6h09 lia o
+`operation_logs` e achava o log da **semana anterior** — podia reportar o sucesso
+passado como se fosse o de hoje.
+
+Agora `_scheduled_run_requests()` devolve `(reqs, ignorados)` e o robô:
+- loga `[AVISO] - '<nome>' hora=<h>: SEM DATA cadastrada ...` para cada evento fora;
+- loga também quando **todas as datas do evento já passaram**;
+- grava log próprio no caminho `sem-eventos` (status `sem-eventos`), para o aviso das
+  6h09 nunca mais ler a semana anterior;
+- carrega os avisos para `result["message"]`, que é o que a notificação lê;
+- `[AVISO]` entrou no `_LOG_KEY_PATTERN` (nunca é cortado do log).
+
+**Mesmo assim: sempre conferir se todo evento tem data antes da quinta.**
+
+## 🔁 Rotina semanal (o lote vira toda quinta às 6h)
+Cada quinta abre **segunda a domingo da semana seguinte**. Histórico: 29/10 → 02–08/11;
+05/11 → 09–15/11. **Antes de cada quinta, trocar as datas dos eventos para o lote novo** —
+datas do lote velho fazem o robô rodar 28 sub-eventos em dias que não têm mais nada.
 
 ## Testes (rodar antes de qualquer deploy)
 - `python3 tests/test_vaga_viva.py` — vaga comprovada não vira "data morta" e insiste mais.
@@ -217,6 +237,7 @@ se todo evento tem data antes da quinta.**
 - `python3 tests/test_log_recorte.py` — log de 24k linhas mantém as marcações das 6h.
 - `python3 tests/test_data_errada.py` — não clica em tela de data errada; auditoria pega a divergência.
 - `python3 tests/test_readmissao_datas.py` — data cortada volta pra fila e pega vaga publicada atrasado.
+- `python3 tests/test_evento_sem_data.py` — evento sem data (ou com datas vencidas) gera AVISO, não silêncio.
 - Dependências não vêm no container:
   `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
   (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).
