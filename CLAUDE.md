@@ -203,6 +203,32 @@ Três problemas reais encontrados, **todos corrigidos** (ver abaixo):
    vazia, as datas cortadas **voltam pra fila** (`Re-admitindo ...`). Env:
    `BATCH_DEAD_REVIVE_MAX` (3), `BATCH_DEAD_REVIVE_MIN_REMAINING` (60s).
 
+### Rodada de 05/11 — 0 marcadas: o robô desistiu na porta de entrada
+**Linha do tempo (Brasília):** 5h47:13 login OK, site rápido · 5h54:29 ainda saudável ·
+**5h55:12 o site passa a RECUSAR CONEXÃO** (connect timeout, nem abre TCP) · 5h58:06 robô
+inicia (6 sub-eventos, janela 600s) · 5h58:45 checagem de sessão falha · 5h58:45→6h00:04
+**3 tentativas de login × 4 retries = 12 conexões, todas timeout** · **6h00:04 o robô
+desiste** (`status=erro`, 0/6) usando só **118s dos 600s** · **6h02:21 o site VOLTA**
+("Sessao ativa — menu carregado com sucesso", registrado por outra parte do próprio
+sistema que seguiu tentando).
+
+**A queda do site foi o gatilho; a perda foi nossa.** `login_with_retries` tinha
+`attempts=3` e sua exceção **matava a rodada inteira** — toda a insistência de
+`run_batch_events` (re-admissão de datas, priorizar vaga comprovada, insistir até o fim
+da janela) **nunca chegou a rodar**. Era o bug mais caro do projeto: anulava as outras
+melhorias. Depois sobrou só RESERVA nas 6 datas; nenhuma titular.
+
+**Correção (05/11):** no robô agendado o login virou
+`recover_until_ready(client, "Login via robo agendado", janela_login)`, que insiste até
+sobrar apenas o tempo reservado para marcar. `janela_login = window - reserva - decorrido`
+(env `SCHEDULED_LOGIN_RESERVE_SECONDS`, 120s). A marcação passou a receber **o que sobrou**
+da janela (`window - decorrido`), não 600s novos — senão a rodada estouraria o tempo total
+e o aviso das 6h09 leria log incompleto. E `recovery_window_seconds` do lote saiu de **0**
+(uma tentativa única) para 60s (env `SCHEDULED_RECOVERY_WINDOW_SECONDS`).
+Simulado com o relógio real daquela quinta: antes morria em 81s; agora entra em 258s
+(3s após o site voltar) com **342s sobrando para marcar**. Site fora o tempo todo →
+ainda falha, mas só perto do fim da janela, nunca passando dela.
+
 ## ⚠️ Robô agendado IGNORA evento sem data — agora com AVISO (corrigido 03/11)
 `_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
 com data em branco gera ZERO sub-eventos e some da rodada**. No botão **Executar** do
@@ -265,6 +291,7 @@ faturamento (foi o que houve em 08/10: APIs 403, app 503, rodada da quinta perdi
 - `python3 tests/test_readmissao_datas.py` — data cortada volta pra fila e pega vaga publicada atrasado.
 - `python3 tests/test_evento_sem_data.py` — evento sem data (ou com datas vencidas) gera AVISO, não silêncio.
 - `node tests/test_aba_escondida.js` — aba em segundo plano para de pingar o servidor (Playwright, já instalado).
+- `python3 tests/test_login_insiste.py` — login insiste até o site voltar em vez de matar a rodada.
 - Dependências não vêm no container:
   `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
   (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).

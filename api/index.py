@@ -33,6 +33,7 @@ from proeis_http import (  # noqa: E402
     login_with_retries,
     normalize_captcha_answer,
     is_valid_captcha_answer,
+    recover_until_ready,
     reparar_mojibake,
     run_batch_events,
 )
@@ -1374,15 +1375,37 @@ async def run_scheduled(request: Request):
             t_session = time.monotonic()
             _warmup_event.wait(timeout=30)
             if not _try_restore_session(client):
-                login_with_retries(client, "Login via robo agendado")
+                # INSISTIR NO LOGIN: o site estar fora as 5h58 nao diz nada sobre
+                # as 6h02. Em 05/11 o PROEIS recusou conexao (connect timeout) de
+                # 5h55:12 a 6h02:21; o login antigo tentava 3 vezes (~80s), estourava
+                # e a excecao MATAVA a rodada inteira as 6h00:04 — deixando 8 min de
+                # janela sem uso e sem nunca chegar na marcacao. O site voltou
+                # 2min17s depois. Agora insistimos ate sobrar apenas o tempo
+                # reservado para marcar.
+                _reserva = max(30, int(os.getenv("SCHEDULED_LOGIN_RESERVE_SECONDS", "120")))
+                _decorrido = time.monotonic() - t_total
+                _janela_login = max(60, int(window - _reserva - _decorrido))
+                print(f"[LOGIN] Sessao invalida: vou INSISTIR no login por ate "
+                      f"{_janela_login}s (reservando {_reserva}s para marcar).")
+                recover_until_ready(client, "Login via robo agendado", _janela_login)
                 _fetch_user_name_and_save(client)
             perf["session_ms"] = int((time.monotonic() - t_session) * 1000)
             print(f"[PERF] session_ms={perf['session_ms']}")
 
+            # Recuperacao no meio do lote tambem passa a insistir (era 0 = uma
+            # tentativa unica), mas com janela curta para nao engolir a marcacao.
+            _rec_window = max(0, int(os.getenv("SCHEDULED_RECOVERY_WINDOW_SECONDS", "60")))
+            # A marcacao usa o que SOBROU da janela, nao 600s novos: senao um login
+            # demorado faria a rodada passar muito do tempo total previsto (o handler
+            # devolve em window+120s e o aviso das 6h09 leria log incompleto).
+            _restante = max(60, int(window - (time.monotonic() - t_total)))
+            if _restante < window:
+                print(f"[INFO] Janela restante para marcar: {_restante}s de {window}s "
+                      f"(o resto foi gasto entrando no site).")
             t_batch = time.monotonic()
             confirmed = run_batch_events(
                 client, events, dry_run=dry_run, scan_rounds=1,
-                recovery_window_seconds=0, batch_window_seconds=window,
+                recovery_window_seconds=_rec_window, batch_window_seconds=_restante,
                 batch_repeat_pause_seconds=1, batch_max_no_action_rounds=0,
             )
             perf["batch_ms"] = int((time.monotonic() - t_batch) * 1000)
