@@ -491,6 +491,13 @@ class ProeisHTTP:
         self._pending_captcha: dict | None = None
         self.captcha_samples: list[dict] = []
         self.last_solver: str | None = None
+        # Confianca do OCR local no ultimo captcha (None = veio do Gemini).
+        self.last_captcha_conf: float | None = None
+        # Pagina devolvida pelo site apos o ultimo clique em 'Eu Vou'.
+        self.last_click_soup: BeautifulSoup | None = None
+        # Trocar a imagem do captcha na tela de vagas apagou a lista? Para de usar.
+        self._captcha_refresh_broken = False
+        self._captcha_refresh_tested = False
         # Registro de todas as vagas que apareceram na operacao (para conferencia
         # posterior de nome/endereco no log do Executar). Deduplicado.
         self.seen_vaga_labels: list[tuple[str, str]] = []
@@ -833,9 +840,11 @@ class ProeisHTTP:
                     if len(text) == 6 and conf >= min_conf:
                         self.last_solver = "ocr-local"
                         self.last_captcha_id = None
+                        self.last_captcha_conf = conf
                         _log("CAPTCHA", f"Vencedor: OCR-local | resposta={text} (conf={conf:.2f})")
                         return text
             self.last_solver = None  # marcado dentro do caminho Gemini
+            self.last_captcha_conf = None
             text = self._solve_parallel_all_solvers(image)
             self.last_solver = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
             return text
@@ -1089,17 +1098,25 @@ class ProeisHTTP:
                 "answer": answer,
                 "model": self.last_solver or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
                 "preproc": os.getenv("CAPTCHA_PREPROCESS", "off"),
+                "conf": self.last_captcha_conf,
             }
         except Exception:
             self._pending_captcha = None
 
-    def _label_pending_captcha(self, accepted: bool) -> None:
-        """Anexa o veredito do site (aceito/recusado) a ultima resolucao pendente."""
+    def _label_pending_captcha(self, accepted: bool, context: str = "") -> None:
+        """Anexa o veredito do site (aceito/recusado) a ultima resolucao pendente.
+
+        `context` marca de onde veio a amostra. "clique-recusado" e o captcha de
+        um 'Eu Vou' que o site respondeu com "Acao nao permitida": guardamos a
+        imagem para conferir a olho se a resposta do OCR estava errada.
+        """
         sample = self._pending_captcha
         self._pending_captcha = None
         if not sample:
             return
         sample["accepted"] = accepted
+        if context:
+            sample["context"] = context
         # cap defensivo para nao estourar memoria/payload numa varredura longa
         if len(self.captcha_samples) < 500:
             self.captcha_samples.append(sample)
@@ -2031,6 +2048,8 @@ class ProeisHTTP:
             ),
             reverse=True,
         )
+        if dry_run and os.getenv("DRY_TEST_CAPTCHA_REFRESH", "1") == "1":
+            self._test_captcha_refresh(soup, all_candidates)
         if not filtered:
             _log("VAGA", f"Nenhum candidato passou pelos filtros. Opcoes disponiveis ({len(candidates)}):")
             if dry_run:
@@ -2089,28 +2108,53 @@ class ProeisHTTP:
                 emit_vaga(c.label, data_evento=data_evento, acao="Visualizacao")
             _log("VAGA", "dry_run=true: nao cliquei em Eu Vou.")
             return False
-        _log("VAGA", f"Clicando em 'Eu Vou' (acao={chosen.action})...")
-        # Vaga RESERVA exige o checkbox 'Aceita vaga reserva' marcado no clique.
-        reserva_vaga = "reserva" in norm(chosen.label)
-        if chosen.action == "postback":
-            # O PROEIS exige um captcha NOVO tambem no clique de "Eu Vou"/participar.
-            # Sem isso, o site rejeita e volta para a tela de filtros (marcacao nao confirma).
-            payload = self.form_payload(soup)
-            self.fill_page_captcha(soup, payload)
-            if reserva_vaga:
-                self.set_reserva_checkbox(soup, payload, True)
-            payload["__EVENTTARGET"] = chosen.payload["target"]
-            payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
-            soup = self.post_form(payload)
-        elif chosen.action == "submit":
-            payload = dict(chosen.payload)
-            self.fill_page_captcha(soup, payload)
-            if reserva_vaga:
-                self.set_reserva_checkbox(soup, payload, True)
-            soup = self.post_form(payload)
-        else:
-            soup = self.request("GET", chosen.action)
-        success = self.confirm_if_needed(soup, alvo_label=chosen.label)
+        # Clique com repeticao NA MESMA TELA. Em 12/11 o site respondeu "Acao nao
+        # permitida" a 5 cliques; a pagina devolvida ainda trazia a vaga, mas o robo
+        # voltava ao menu e refazia o filtro (~1s) — e nesse segundo outro voluntario
+        # levou as duas MOTO PATRULHA de 1 posto. A pagina da recusa ja tem a vaga,
+        # captcha novo e VIEWSTATE novo: clicar de novo ali leva ~0,1s.
+        tentativas_tela = max(1, int(os.getenv("CLICK_SAME_PAGE_ATTEMPTS", "4")))
+        success = False
+        for tentativa in range(1, tentativas_tela + 1):
+            _log("VAGA", f"Clicando em 'Eu Vou' (acao={chosen.action})...")
+            # Vaga RESERVA exige o checkbox 'Aceita vaga reserva' marcado no clique.
+            reserva_vaga = "reserva" in norm(chosen.label)
+            if chosen.action in ("postback", "submit"):
+                # O PROEIS exige um captcha NOVO tambem no clique de "Eu Vou"/participar.
+                # Sem isso, o site rejeita e volta para a tela de filtros (marcacao nao confirma).
+                soup, chosen, payload = self._prepare_click(
+                    soup, chosen, reserva_vaga, prefer_norm, should_try_fallback,
+                    nome_evento, hora_evento, turno, endereco,
+                )
+                resposta = self.post_form(payload)
+            else:
+                resposta = self.request("GET", chosen.action)
+            success = self.confirm_if_needed(resposta, alvo_label=chosen.label)
+            if success:
+                self.consecutive_site_rejections = 0
+                self._label_pending_captcha(True, context="clique-aceito")
+                break
+            # Guarda a imagem do captcha deste clique para conferencia posterior.
+            self._label_pending_captcha(False, context="clique-recusado")
+            if tentativa == tentativas_tela:
+                break
+            pagina = self.last_click_soup or resposta
+            pagina_data = self.page_selected_date(pagina)
+            if data_evento and pagina_data and not same_site_date(pagina_data, data_evento):
+                _log("VAGA", f"Tela devolvida apos a recusa e de outra data ({pagina_data}); refazendo o filtro.")
+                break
+            de_novo = self._same_candidate(
+                pagina, prefer_norm, should_try_fallback, nome_evento, hora_evento, turno, endereco,
+            )
+            if de_novo is None:
+                _log("VAGA", "Apos a recusa a vaga NAO esta mais na tela devolvida; refazendo o filtro.")
+                break
+            _log(
+                "VAGA",
+                f"Site recusou o clique, mas a vaga CONTINUA na tela: clicando de novo aqui "
+                f"mesmo ({tentativa + 1}/{tentativas_tela}), sem voltar ao menu.",
+            )
+            soup, chosen = pagina, de_novo
         if not success and nome_evento:
             # O site as vezes marca (reserva) e volta sem a frase de sucesso. Confere
             # na lista de marcados: se a vaga entrou, e sucesso (evita retry a toa).
@@ -2124,6 +2168,107 @@ class ProeisHTTP:
             # gravou de fato. So loga — nunca desfaz uma marcacao conquistada.
             self.audit_marking(nome_evento, data_evento, hora_evento)
         return success
+
+    def _same_candidate(
+        self, soup: BeautifulSoup, prefer_norm: str, titular_only: bool,
+        nome_evento: str, hora_evento: str, turno: str, endereco: str,
+    ) -> "Candidate | None":
+        """Acha, numa pagina nova, a linha do MESMO evento (nome/hora/tipo)."""
+        try:
+            candidatos = self.available_candidates(soup, "qualquer")
+        except Exception:
+            return None
+        if titular_only:
+            candidatos = [c for c in candidatos if self.matches_preference(norm(c.label), prefer_norm)]
+        candidatos = [c for c in candidatos if self.event_matches(c.label, nome_evento, hora_evento, turno, endereco)]
+        if not candidatos:
+            return None
+        candidatos.sort(
+            key=lambda c: (self.event_match_score(c.label, nome_evento, hora_evento, turno, endereco), c.score),
+            reverse=True,
+        )
+        return candidatos[0]
+
+    def _click_payload(self, soup: BeautifulSoup, chosen: "Candidate", reserva_vaga: bool) -> dict[str, str]:
+        if chosen.action == "postback":
+            payload = self.form_payload(soup)
+            self.fill_page_captcha(soup, payload)
+            if reserva_vaga:
+                self.set_reserva_checkbox(soup, payload, True)
+            payload["__EVENTTARGET"] = chosen.payload["target"]
+            payload["__EVENTARGUMENT"] = chosen.payload.get("argument", "")
+            return payload
+        payload = dict(chosen.payload)
+        self.fill_page_captcha(soup, payload)
+        if reserva_vaga:
+            self.set_reserva_checkbox(soup, payload, True)
+        return payload
+
+    def _prepare_click(
+        self, soup: BeautifulSoup, chosen: "Candidate", reserva_vaga: bool,
+        prefer_norm: str, titular_only: bool,
+        nome_evento: str, hora_evento: str, turno: str, endereco: str,
+    ) -> "tuple[BeautifulSoup, Candidate, dict[str, str]]":
+        """Monta o POST do clique, trocando o captcha quando o OCR esta inseguro.
+
+        Em 12/11, 3 dos 5 cliques recusados usaram captcha com confianca 0,54-0,61;
+        no filtro, captchas abaixo de 0,70 so foram aceitos 24% das vezes. Pedir
+        outra imagem custa ~0,1s e evita gastar o clique num captcha provavelmente
+        errado. Se trocar a imagem fizer a lista de vagas sumir, o recurso se
+        desliga sozinho pelo resto da rodada.
+        """
+        min_conf = float(os.getenv("CLICK_CAPTCHA_MIN_CONF", "0.90"))
+        max_trocas = max(0, int(os.getenv("CLICK_CAPTCHA_MAX_REFRESH", "2")))
+        for troca in range(max_trocas + 1):
+            payload = self._click_payload(soup, chosen, reserva_vaga)
+            conf = self.last_captcha_conf
+            if (
+                conf is None or conf >= min_conf or troca == max_trocas
+                or self._captcha_refresh_broken
+            ):
+                return soup, chosen, payload
+            _log(
+                "CAPTCHA",
+                f"Captcha do clique com confianca baixa ({conf:.2f} < {min_conf:.2f}); "
+                f"pedindo outra imagem antes de clicar ({troca + 1}/{max_trocas}).",
+            )
+            self._pending_captcha = None  # essa resposta nao foi enviada ao site
+            nova = self.refresh_page_captcha(soup)
+            if nova is None:
+                return soup, chosen, payload
+            de_novo = self._same_candidate(
+                nova, prefer_norm, titular_only, nome_evento, hora_evento, turno, endereco,
+            )
+            if de_novo is None:
+                self._captcha_refresh_broken = True
+                raise AutomationError(
+                    "Troquei a imagem do captcha e a vaga nao veio na tela nova; "
+                    "refazendo o filtro (troca de captcha desligada nesta rodada)."
+                )
+            soup, chosen = nova, de_novo
+        return soup, chosen, payload
+
+    def _test_captcha_refresh(self, soup: BeautifulSoup, candidatos: "list[Candidate]") -> None:
+        """So no modo simulacao: confere se 'Gerar Nova Imagem' preserva a lista de vagas."""
+        if self._captcha_refresh_tested or not candidatos:
+            return
+        self._captcha_refresh_tested = True
+        try:
+            antes = {c.label for c in candidatos}
+            nova = self.refresh_page_captcha(soup)
+            if nova is None:
+                _log("CAPTCHA", "[teste-captcha] controle 'Gerar Nova Imagem' nao encontrado na tela de vagas.")
+                return
+            depois = {c.label for c in self.available_candidates(nova, "qualquer")}
+            _log(
+                "CAPTCHA",
+                f"[teste-captcha] trocar a imagem na tela de vagas: {len(antes)} linha(s) antes, "
+                f"{len(depois)} depois, {len(antes & depois)} iguais -> "
+                f"{'LISTA PRESERVADA' if antes and antes <= depois else 'LISTA MUDOU'}; "
+                f"data da tela: {self.page_selected_date(nova) or '?'}.",
+            )
+        except Exception as exc:
+            _log("CAPTCHA", f"[teste-captcha] falhou: {exc}")
 
     def event_matches(self, label: str, nome_evento: str, hora_evento: str, turno: str, endereco: str) -> bool:
         label_norm = norm_match(label)
@@ -2406,7 +2551,12 @@ class ProeisHTTP:
         linhas_eu_vou = len(re.findall(r"eu vou", html, re.I))
         alvo_presente = None
         if alvo_label:
-            alvo_presente = norm(alvo_label[:60]) in norm(html)
+            # Compara com o TEXTO da tela. Antes comparava com o HTML cru, onde as
+            # celulas da linha ficam separadas por tags: nunca casava e o diagnostico
+            # dizia "vaga sumiu" mesmo com ela na tela (foi o que houve em 12/11).
+            alvo_txt = re.sub(r"\s+", " ", alvo_label).strip()
+            alvo_txt = re.sub(r"\s*eu vou\s*$", "", alvo_txt, flags=re.I)[:60]
+            alvo_presente = norm(alvo_txt) in norm(texto_util)
 
         return {
             "mensagens": mensagens,
@@ -2426,6 +2576,7 @@ class ProeisHTTP:
                 payload = self.form_payload(soup)
                 payload[submit] = self.input_value(soup, submit)
                 soup = self.post_form(payload)
+        self.last_click_soup = soup
         final_text = soup.get_text(" ", strip=True)
         page_text = norm(str(soup))
         success = any(
@@ -3144,7 +3295,9 @@ def run_batch_events(
     _grace = int(os.getenv("BATCH_DEAD_GRACE_SECONDS", "180"))
     _agora_br = datetime.now() - timedelta(hours=3)
     _seg_ate_6h = 0.0
-    if _agora_br.hour < 6:
+    # BATCH_DEAD_ANCHOR_6H=0 desliga a ancora (usado nos testes, que senao
+    # falham quando rodados de madrugada, antes das 6h de Brasilia).
+    if _agora_br.hour < 6 and os.getenv("BATCH_DEAD_ANCHOR_6H", "1") == "1":
         _abertura = _agora_br.replace(hour=6, minute=0, second=0, microsecond=0)
         _seg_ate_6h = max(0.0, (_abertura - _agora_br).total_seconds())
     dead_grace_deadline = time.monotonic() + _seg_ate_6h + _grace

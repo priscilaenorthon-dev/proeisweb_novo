@@ -8,7 +8,8 @@ Cenario: 2 eventos.
   B = evento de data realmente morta -> deve continuar sendo descartado.
 """
 import os, sys
-os.environ["BATCH_DEAD_GRACE_SECONDS"] = "0"   # sem grace: corte agressivo
+os.environ["BATCH_DEAD_GRACE_SECONDS"] = "0"
+os.environ["BATCH_DEAD_ANCHOR_6H"] = "0"   # teste nao depende da hora do dia   # sem grace: corte agressivo
 os.environ["BATCH_DEAD_DROP_AFTER"] = "2"
 os.environ["BATCH_ALIVE_ATTEMPTS"] = "6"
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

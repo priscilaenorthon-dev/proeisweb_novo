@@ -15,7 +15,8 @@ Cenario do teste:
 import os
 import sys
 
-os.environ["BATCH_DEAD_GRACE_SECONDS"] = "0"            # corte agressivo: pior caso
+os.environ["BATCH_DEAD_GRACE_SECONDS"] = "0"
+os.environ["BATCH_DEAD_ANCHOR_6H"] = "0"   # teste nao depende da hora do dia            # corte agressivo: pior caso
 os.environ["BATCH_DEAD_DROP_AFTER"] = "2"
 os.environ["BATCH_DEAD_REVIVE_MIN_REMAINING"] = "1"     # janela curta de teste
 os.environ["BATCH_DEAD_REVIVE_MAX"] = "3"

@@ -229,6 +229,38 @@ Simulado com o relógio real daquela quinta: antes morria em 81s; agora entra em
 (3s após o site voltar) com **342s sobrando para marcar**. Site fora o tempo todo →
 ainda falha, mas só perto do fim da janela, nunca passando dela.
 
+### Rodada de 12/11 — 2 titular marcadas, 2 perdidas no "Ação não permitida"
+Marcou **MOTO PATRULHA 19/11 13h (6h00:01)** e **RAS SÃO FIDÉLIS 21/11 22h (6h00:08)**,
+ambas com `[auditoria] OK`. A insistência no login (correção de 05/11) rodou de verdade:
+sessão inválida às 5h58, login às 5h59, 518s de 600s sobrando. Site instável: 106 telas
+vazias, 35 erros de rede, 0 Gemini.
+**Perdas:** MOTO PATRULHA 20/11 e 18/11 (1 posto cada). O site respondeu `alert('Ação não
+permitida')` ao clique (resposta em ~30ms, contra 300–900ms nos aceitos); **a página
+devolvida AINDA trazia a vaga**, mas o robô voltava ao menu e refazia o filtro (~1s) e
+nesse segundo outro voluntário levou. A RAS 21/11 (2 postos) foi recusada 2x e aceita na 3ª.
+Não é mudança do site (o alerta já aparecia em semanas anteriores). **Causa da recusa não
+provada:** 3 das 5 recusas tinham captcha com confiança 0,54–0,61 (no filtro, conf <0,70
+só foi aceito 24% das vezes; ≥0,99 = 100%), mas 2 tinham 0,97–0,98.
+O diagnóstico dizia "vaga sumiu" por bug meu: comparava o rótulo com o HTML cru.
+
+**Mudanças de 12/11 (`choose_target_event`):**
+1. **Repete o clique na mesma tela** (`CLICK_SAME_PAGE_ATTEMPTS`, 4): se a página da
+   recusa ainda traz a vaga (mesmo nome/hora/tipo e mesma data), clica de novo ali, sem
+   menu nem filtro. Log: `Site recusou o clique, mas a vaga CONTINUA na tela`.
+2. **Troca captcha inseguro antes de clicar** (`_prepare_click`): conf do OCR <
+   `CLICK_CAPTCHA_MIN_CONF` (0.90) → "Gerar Nova Imagem", até `CLICK_CAPTCHA_MAX_REFRESH`
+   (2). Se a troca fizer a vaga sumir da tela, desliga-se sozinho na rodada
+   (`_captcha_refresh_broken`). No dry-run, `[teste-captcha]` loga se a troca preserva a lista.
+3. **Captcha do clique vai pro dataset** com `context` = `clique-recusado`/`clique-aceito`
+   e `conf` (campos novos em `captcha_dataset`). Diagnóstico corrigido (compara com o texto).
+Testes: `tests/test_clique_recusado.py`. Os testes de data morta ganharam
+`BATCH_DEAD_ANCHOR_6H=0` (falhavam quando rodados antes das 6h de Brasília).
+
+**⭐ A FAZER NA QUINTA 19/11 (pedido do dono):** consultar `captcha_dataset` com
+`context == "clique-recusado"`, baixar as imagens, **olhar cada uma** e comparar com o
+campo `answer`: se a resposta do OCR estava errada, a causa do "Ação não permitida" é o
+captcha; se estava certa, é recusa do site. Reportar ao dono com a contagem.
+
 ## ⚠️ Robô agendado IGNORA evento sem data — agora com AVISO (corrigido 03/11)
 `_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
 com data em branco gera ZERO sub-eventos e some da rodada**. No botão **Executar** do
@@ -292,6 +324,7 @@ faturamento (foi o que houve em 08/10: APIs 403, app 503, rodada da quinta perdi
 - `python3 tests/test_evento_sem_data.py` — evento sem data (ou com datas vencidas) gera AVISO, não silêncio.
 - `node tests/test_aba_escondida.js` — aba em segundo plano para de pingar o servidor (Playwright, já instalado).
 - `python3 tests/test_login_insiste.py` — login insiste até o site voltar em vez de matar a rodada.
+- `python3 tests/test_clique_recusado.py` — clique recusado repete na mesma tela; captcha inseguro é trocado; imagem fica guardada.
 - Dependências não vêm no container:
   `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
   (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).

@@ -373,6 +373,9 @@ def _save_captcha_samples(client: ProeisHTTP) -> None:
                 "accepted": bool(s.get("accepted", False)),
                 "model": s.get("model", ""),
                 "preproc": s.get("preproc", ""),
+                # de onde veio (ex.: "clique-recusado") e a confianca do OCR local
+                "context": s.get("context", ""),
+                "conf": s.get("conf"),
                 "created_at": now,
                 "expire_at": expire_at,
             })
@@ -521,6 +524,9 @@ _LOG_KEY_PATTERN = re.compile(
     r"|\[tela-vazia\]"
     r"|Evento \d+/\d+ \["
     r"|\[AVISO\]"
+    r"|CONTINUA na tela"
+    r"|confianca baixa"
+    r"|\[teste-captcha\]"
     r"|Marcacao agrupada finalizada"
     r"|Robo agendado"
     r"|descartado da fila"
