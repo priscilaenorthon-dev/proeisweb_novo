@@ -498,6 +498,10 @@ class ProeisHTTP:
         # Trocar a imagem do captcha na tela de vagas apagou a lista? Para de usar.
         self._captcha_refresh_broken = False
         self._captcha_refresh_tested = False
+        # O PROEIS aceita UMA marcacao por login: depois de marcar, todo clique na
+        # mesma sessao volta 'Acao nao permitida' ate entrar de novo.
+        self.needs_fresh_login = False
+        self.last_click_alerts: list[str] = []
         # Registro de todas as vagas que apareceram na operacao (para conferencia
         # posterior de nome/endereco no log do Executar). Deduplicado.
         self.seen_vaga_labels: list[tuple[str, str]] = []
@@ -2133,9 +2137,23 @@ class ProeisHTTP:
             if success:
                 self.consecutive_site_rejections = 0
                 self._label_pending_captcha(True, context="clique-aceito")
+                # Esta sessao ja marcou: o proximo clique so entra apos novo login.
+                self.needs_fresh_login = True
                 break
             # Guarda a imagem do captcha deste clique para conferencia posterior.
             self._label_pending_captcha(False, context="clique-recusado")
+            if any("nao permitida" in norm(a) for a in self.last_click_alerts):
+                # "Acao nao permitida" = a sessao ja gastou a sua marcacao (medido em
+                # 12/11 e 19/11: 6 aceitos, todos no 1o clique apos um login; 37
+                # recusados, todos numa sessao que ja tinha marcado; captcha certo
+                # nao muda nada). Insistir na mesma tela so queima tempo: relogar.
+                self.needs_fresh_login = True
+                _log(
+                    "VAGA",
+                    "Site respondeu 'Acao nao permitida': esta sessao nao marca mais. "
+                    "Vou refazer o login e tentar de novo, sem insistir nesta tela.",
+                )
+                break
             if tentativa == tentativas_tela:
                 break
             pagina = self.last_click_soup or resposta
@@ -2155,7 +2173,8 @@ class ProeisHTTP:
                 f"mesmo ({tentativa + 1}/{tentativas_tela}), sem voltar ao menu.",
             )
             soup, chosen = pagina, de_novo
-        if not success and nome_evento:
+        recusa_explicita = any("nao permitida" in norm(a) for a in self.last_click_alerts)
+        if not success and nome_evento and not recusa_explicita:
             # O site as vezes marca (reserva) e volta sem a frase de sucesso. Confere
             # na lista de marcados: se a vaga entrou, e sucesso (evita retry a toa).
             if self.verify_marking_in_menu(nome_evento, data_evento, hora_evento):
@@ -2577,6 +2596,7 @@ class ProeisHTTP:
                 payload[submit] = self.input_value(soup, submit)
                 soup = self.post_form(payload)
         self.last_click_soup = soup
+        self.last_click_alerts = []
         final_text = soup.get_text(" ", strip=True)
         page_text = norm(str(soup))
         success = any(
@@ -2602,6 +2622,7 @@ class ProeisHTTP:
             print(re.sub(r"\s+", " ", final_text)[:1200])
             return False
 
+        self.last_click_alerts = list(fb.get("alertas") or [])
         _log("VAGA", "--- DIAGNOSTICO DA RECUSA ---")
         if fb["mensagens"]:
             for m in fb["mensagens"][:6]:
@@ -3173,8 +3194,28 @@ def run_one_batch_event(
 
     for attempt in range(1, max_attempts + 1):
         try:
+            # O site aceita UMA marcacao por login. Em 19/11 o robo gastava ~5s em 8
+            # cliques recusados ("Acao nao permitida") ate chegar na tentativa que
+            # reloga; as 4 vagas sairam em 19s e a de 29/11 se perdeu nesse meio.
+            # Agora entra de novo ANTES do proximo clique (~0,5s).
+            relogou = False
+            if getattr(client, "needs_fresh_login", False):
+                _log(
+                    "LOGIN",
+                    f"Sessao ja usou a sua marcacao: refazendo o login antes do evento "
+                    f"{index}/{total} (o site aceita uma marcacao por login).",
+                )
+                try:
+                    client.session.cookies.clear()
+                except Exception:
+                    pass
+                client.soup = None
+                client.login_flow()
+                client.needs_fresh_login = False
+                last_group = ("", "", "")
+                relogou = True
             # Alterna: retry rapido (tela nova) e, a cada 3a tentativa, sessao nova.
-            if attempt > 1 and attempt % 3 != 0:
+            if attempt > 1 and (attempt % 3 != 0 or relogou):
                 _log("INFO", f"Regra 1: retry imediato do evento {index}/{total} apos clique sem confirmacao.")
                 client.soup = None
                 last_group = ("", "", "")

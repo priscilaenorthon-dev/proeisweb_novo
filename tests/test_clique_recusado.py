@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """Reproduz as perdas de 12/11 e prova as tres mudancas no clique.
 
+(Em 19/11 descobriu-se que "Acao nao permitida" significa sessao que ja marcou:
+esse caso especifico reloga em vez de repetir — ver test_uma_marcacao_por_login.
+Aqui a repeticao na mesma tela e testada com uma recusa generica do site.)
+
 Naquela quinta o site respondeu "Acao nao permitida" a 5 cliques em 'Eu Vou'.
 A pagina devolvida AINDA trazia a vaga, mas o robo voltava ao menu e refazia o
 filtro (~1s). Nesse segundo outro voluntario levou as duas MOTO PATRULHA de 1
@@ -31,14 +35,14 @@ def check(cond, msg):
 LABEL = "MOTO PATRULHA SÃO FIDÉLIS 13:00:00 8 h AVENIDA EMYDIO MAIA SANTOS 1 - curso: N Eu Vou"
 
 
-def tela(com_vaga=True, alerta=False, sucesso=False):
+def tela(com_vaga=True, alerta=False, sucesso=False, texto_alerta="Nao foi possivel concluir a operacao"):
     """Tela de vagas como a do site: cada coluna numa celula separada."""
     linha = ("<tr><td>MOTO PATRULHA SÃO FIDÉLIS</td><td>13:00:00</td><td>8 h</td>"
              "<td>AVENIDA EMYDIO MAIA SANTOS</td><td>1 - curso: N</td>"
              "<td><a href=\"javascript:__doPostBack('gv$ctl02$lnk','')\">Eu Vou</a></td></tr>") if com_vaga else ""
     outra = ("<tr><td>RAS CAMPOS 12H</td><td>07:00:00</td><td>12 h</td><td>RUA X</td>"
              "<td>2 - curso: N</td><td><a href=\"javascript:__doPostBack('gv$ctl03$lnk','')\">Eu Vou</a></td></tr>")
-    script = "<script>alert('Ação não permitida');</script>" if alerta else ""
+    script = f"<script>alert('{texto_alerta}');</script>" if alerta else ""
     msg = "<span>Confirmacao no evento foi incluida com sucesso</span>" if sucesso else ""
     return BeautifulSoup(
         "<html><body><select id='ddlDataEvento' name='ddlDataEvento'>"
@@ -47,7 +51,7 @@ def tela(com_vaga=True, alerta=False, sucesso=False):
 
 
 # ─── 1. diagnostico: a vaga na tela tem de ser reconhecida ──────────────────
-fb = p.ProeisHTTP.extract_site_feedback(tela(com_vaga=True, alerta=True), LABEL)
+fb = p.ProeisHTTP.extract_site_feedback(tela(com_vaga=True, alerta=True, texto_alerta="Ação não permitida"), LABEL)
 check(fb["alvo_presente"] is True, "recusa com a vaga na tela -> diagnostico diz que ela CONTINUA (antes dizia 'sumiu')")
 fb2 = p.ProeisHTTP.extract_site_feedback(tela(com_vaga=False, alerta=True), LABEL)
 check(fb2["alvo_presente"] is False, "vaga realmente fora da tela -> diagnostico diz que sumiu")

@@ -256,10 +256,26 @@ O diagnóstico dizia "vaga sumiu" por bug meu: comparava o rótulo com o HTML cr
 Testes: `tests/test_clique_recusado.py`. Os testes de data morta ganharam
 `BATCH_DEAD_ANCHOR_6H=0` (falhavam quando rodados antes das 6h de Brasília).
 
-**⭐ A FAZER NA QUINTA 19/11 (pedido do dono):** consultar `captcha_dataset` com
-`context == "clique-recusado"`, baixar as imagens, **olhar cada uma** e comparar com o
-campo `answer`: se a resposta do OCR estava errada, a causa do "Ação não permitida" é o
-captcha; se estava certa, é recusa do site. Reportar ao dono com a contagem.
+### Rodada de 19/11 — 4 titular marcadas; descoberta: UMA marcação por login
+Marcou MOTO PATRULHA **24/11 (6h00:01), 25/11 (6h00:07), 28/11 (6h00:19)** e RAS
+**26/11 22h (6h00:12)**, todas `[auditoria] OK`. 23/11 sem vaga titular; 29/11 apareceu às
+6h00:20, levou 8 recusas e depois só tela vazia (277 telas vazias, 57 erros de rede no total).
+
+**Conferência do captcha (pedido do dono): NÃO é o captcha.** 32 cliques recusados, 27 com
+conf 0,99–1,00; olhei 7 das 9 imagens distintas (CCDDB5 claramente certo, 5 batem, só a de
+0,58 duvidosa).
+**Causa real: o site aceita UMA marcação por login.** Em 12/11 + 19/11: 6 aceitos, todos o
+1º clique após um login; 37 recusados (`Ação não permitida`), todos em sessão que já tinha
+marcado. O robô gastava ~5s em 8 recusas até a tentativa 3 (Regra 2 = relogin), aí entrava.
+Repetir o clique na mesma tela (mudança de 12/11) não ajuda nesse caso — além disso a
+página da recusa devolve o MESMO captcha (as 4 repetições usaram a mesma resposta).
+
+**Correção (19/11):** `ProeisHTTP.needs_fresh_login` vira True ao confirmar uma marcação
+e ao receber `Ação não permitida`; `run_one_batch_event` refaz o login ANTES da tentativa
+seguinte (~0,5s). `Ação não permitida` não repete mais na mesma tela nem consulta a lista
+de marcados; outras recusas seguem repetindo. Teste: `tests/test_uma_marcacao_por_login.py`
+(4 vagas = 4 cliques, 0 recusas, 3 logins). **Conferir na quinta 26/11** se as recusas
+sumiram e em quantos segundos saíram as marcações.
 
 ## ⚠️ Robô agendado IGNORA evento sem data — agora com AVISO (corrigido 03/11)
 `_scheduled_run_requests()` (api/index.py) expande `data_evento` por vírgula; **evento
@@ -325,6 +341,7 @@ faturamento (foi o que houve em 08/10: APIs 403, app 503, rodada da quinta perdi
 - `node tests/test_aba_escondida.js` — aba em segundo plano para de pingar o servidor (Playwright, já instalado).
 - `python3 tests/test_login_insiste.py` — login insiste até o site voltar em vez de matar a rodada.
 - `python3 tests/test_clique_recusado.py` — clique recusado repete na mesma tela; captcha inseguro é trocado; imagem fica guardada.
+- `python3 tests/test_uma_marcacao_por_login.py` — reloga após cada marcação; "Ação não permitida" não vira 8 cliques perdidos.
 - Dependências não vêm no container:
   `python3 -m pip install -q --break-system-packages beautifulsoup4 requests fastapi pydantic google-cloud-firestore`
   (os 3 primeiros testes só precisam de `beautifulsoup4 requests`; `test_log_recorte` importa `api.index`).

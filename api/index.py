@@ -525,6 +525,8 @@ _LOG_KEY_PATTERN = re.compile(
     r"|Evento \d+/\d+ \["
     r"|\[AVISO\]"
     r"|CONTINUA na tela"
+    r"|uma marcacao por login"
+    r"|nao marca mais"
     r"|confianca baixa"
     r"|\[teste-captcha\]"
     r"|Marcacao agrupada finalizada"
